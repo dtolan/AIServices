@@ -2,76 +2,94 @@
 
 A self-hosted AI prompt engineering assistant for Stable Diffusion with **flexible LLM support** - use local models (Ollama) or cloud providers (Claude, Gemini) to craft better prompts and iteratively refine images.
 
-## Features
+## ✨ Key Features
 
-- **Multiple LLM Providers** - Choose between Ollama (free, local), Anthropic Claude (premium quality), or Google Gemini (fast & capable)
-- **Conversational prompt refinement** - Describe what you want in natural language, AI suggests optimized SD prompts
-- **Automatic1111 integration** - Connects to your existing SD Web UI
-- **Real-time generation** - See results immediately with side-by-side chat and image view
-- **Smart parameter suggestions** - AI recommends optimal steps, CFG, samplers based on desired output
-- **Prompt history** - Track your prompt evolution and iterations
-- **Easy provider switching** - Change LLM providers with a single config setting
+- **🎨 UI-Based Settings Management** - Configure everything from the web interface, no manual .env editing needed
+- **🔄 Dual-LLM Mode** - Use different LLMs for planning (quality) vs execution (speed) tasks
+- **🤖 Multiple LLM Providers** - Choose between Ollama (free, local), Anthropic Claude (premium quality), or Google Gemini (fast & capable)
+- **📋 Model Dropdown Menus** - Automatically fetch and select from available models for each provider
+- **💬 Conversational Prompt Refinement** - Describe what you want in natural language, AI suggests optimized SD prompts
+- **❓ Interactive Question Mode** - AI asks clarifying questions to understand your vision better
+- **🔌 Automatic1111 Integration** - Connects to your existing SD Web UI
+- **⚡ Real-time Generation** - See results immediately with side-by-side chat and image view
+- **🎯 Smart Parameter Suggestions** - AI recommends optimal steps, CFG, samplers based on desired output
+- **📚 Knowledge Base** - Built-in guides and templates for Stable Diffusion
+- **🔄 Prompt History** - Track your prompt evolution and iterations
 
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌─────────────┐      ┌─────────────┐      ┌──────────────────────┐
-│   Web UI    │─────>│   FastAPI   │─────>│  LLM Provider        │
-│  (Browser)  │      │   Backend   │      │  • Ollama (local)    │
-└─────────────┘      └─────────────┘      │  • Claude (cloud)    │
-                            │              │  • Gemini (cloud)    │
-                            │              └──────────────────────┘
-                            v
-                     ┌─────────────────┐
-                     │  Automatic1111  │
-                     │ (Stable Diffusion)│
-                     └─────────────────┘
+┌─────────────────┐      ┌─────────────────┐      ┌──────────────────────┐
+│   React UI      │─────>│   FastAPI       │─────>│  LLM Provider        │
+│   (Vite + TW)   │      │   Backend       │      │  • Ollama (local)    │
+└─────────────────┘      └─────────────────┘      │  • Claude (cloud)    │
+                                │                  │  • Gemini (cloud)    │
+                                │                  └──────────────────────┘
+                                v
+                         ┌─────────────────┐
+                         │  Automatic1111  │
+                         │(Stable Diffusion)│
+                         └─────────────────┘
 ```
 
-## Prerequisites
+## 📋 Prerequisites
 
-1. **Python 3.9+**
-2. **LLM Provider** (choose one or configure multiple):
+1. **Python 3.9+** (tested with Python 3.10)
+2. **Node.js 16+** (for frontend development)
+3. **LLM Provider** (choose one or configure multiple):
    - **Ollama** (local, free) - [Install Ollama](https://ollama.ai/)
    - **Anthropic Claude** (cloud, API key) - [Get API key](https://console.anthropic.com/)
    - **Google Gemini** (cloud, API key) - [Get API key](https://aistudio.google.com/app/apikey)
-3. **Automatic1111 Stable Diffusion Web UI** - [Setup guide](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
+4. **Automatic1111 Stable Diffusion Web UI** - [Setup guide](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 
-## Installation
+## 🚀 Quick Start
 
-### 1. Choose and Setup LLM Provider
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd AIServices
+```
+
+### 2. Setup LLM Provider (Choose at least one)
 
 #### Option A: Ollama (Local - Free)
 
 ```bash
 # Install Ollama from https://ollama.ai/
 
-# Pull a recommended model (choose one):
-ollama pull llama3.2      # Recommended: Fast and smart (3B)
-ollama pull llama3.1      # Alternative: More capable (8B)
-ollama pull mistral       # Alternative: Great for creative tasks
+# Pull recommended models:
+ollama pull llama3.2:3b    # Fast, lightweight (recommended for execution)
+ollama pull llama3.1:8b    # More capable (recommended for planning)
+ollama pull qwen3:8b       # Alternative: Great for creative tasks
 ```
 
 #### Option B: Anthropic Claude (Cloud - Paid)
 
 1. Sign up at [Anthropic Console](https://console.anthropic.com/)
 2. Create an API key
-3. Add to `.env`: `ANTHROPIC_API_KEY=your-key-here`
+3. You'll add this in the Settings UI later
 
-**Recommended models:**
-- `claude-3-5-sonnet-20241022` - Best quality, slower
-- `claude-3-5-haiku-20241022` - Fast and good quality
+**Available models:**
+- `claude-3-5-sonnet-20241022` - Best quality, slower (recommended for planning)
+- `claude-3-5-haiku-20241022` - Fast and good quality (recommended for execution)
+- `claude-3-opus-20240229` - Highest quality
+- `claude-3-sonnet-20240229` - Legacy version
+- `claude-3-haiku-20240307` - Legacy fast version
 
 #### Option C: Google Gemini (Cloud - Free tier available)
 
 1. Get API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Add to `.env`: `GOOGLE_API_KEY=your-key-here`
+2. You'll add this in the Settings UI later
 
-**Recommended models:**
-- `gemini-1.5-flash` - Fast and capable (recommended)
-- `gemini-1.5-pro` - Higher quality, slower
+**Current models (as of 2025):**
+- `gemini-2.5-flash` - Fast and capable (recommended for execution)
+- `gemini-2.5-pro` - Higher quality (recommended for planning)
+- `gemini-flash-latest` - Always uses latest flash model
+- `gemini-pro-latest` - Always uses latest pro model
+- `gemini-2.0-flash-exp` - Experimental fast model
 
-### 2. Start Automatic1111 with API
+### 3. Start Automatic1111 with API
 
 Launch your Stable Diffusion Web UI with API enabled:
 
@@ -85,90 +103,271 @@ webui.bat --api
 
 The API should be available at `http://localhost:7860`
 
-### 3. Install Python Dependencies
+### 4. Install Backend Dependencies
 
 ```bash
 cd AIServices
 pip install -r requirements.txt
 ```
 
-### 4. Configure Environment
+### 5. Create .env File
 
-Copy the example environment file and adjust if needed:
+Copy the example environment file:
 
 ```bash
-copy .env.example .env  # Windows
-cp .env.example .env    # Linux/Mac
+# Windows
+copy .env.example .env
+
+# Linux/Mac
+cp .env.example .env
 ```
 
-Edit `.env` to configure your chosen LLM provider:
+**Basic .env configuration** (you can adjust most settings via the UI later):
 
 ```env
-# Choose your LLM provider: "ollama", "claude", or "gemini"
-LLM_PROVIDER=ollama
+# ===========================================
+# DUAL-LLM CONFIGURATION
+# ===========================================
+USE_DUAL_LLM=True
 
-# Ollama Configuration (if using Ollama)
-OLLAMA_HOST=http://localhost:11434
+# Planning LLM (for initial prompt engineering)
+PLANNING_LLM_PROVIDER=gemini
+PLANNING_GEMINI_MODEL=gemini-2.5-pro
+
+# Execution LLM (for quick iterations)
+EXECUTION_LLM_PROVIDER=gemini
+EXECUTION_GEMINI_MODEL=gemini-2.5-flash
+
+# ===========================================
+# SINGLE LLM CONFIGURATION (when USE_DUAL_LLM=false)
+# ===========================================
+LLM_PROVIDER=ollama
 OLLAMA_MODEL=llama3.2:latest
 
-# Claude Configuration (if using Claude)
+# ===========================================
+# API KEYS (Add your keys here or via Settings UI)
+# ===========================================
+# Anthropic Claude Configuration
 ANTHROPIC_API_KEY=your-api-key-here
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
 
-# Gemini Configuration (if using Gemini)
+# Google Gemini Configuration
 GOOGLE_API_KEY=your-api-key-here
-GEMINI_MODEL=gemini-1.5-flash
 
-# Stable Diffusion API
+# ===========================================
+# STABLE DIFFUSION
+# ===========================================
 SD_API_URL=http://localhost:7860
+SD_API_TIMEOUT=300
 
-# Application Configuration
+# ===========================================
+# APPLICATION
+# ===========================================
 APP_HOST=0.0.0.0
 APP_PORT=8000
+DEBUG=True
+
+# Generation defaults
+DEFAULT_STEPS=30
+DEFAULT_CFG_SCALE=7.0
+DEFAULT_WIDTH=512
+DEFAULT_HEIGHT=512
+DEFAULT_SAMPLER=DPM++ 2M Karras
 ```
 
-## Usage
-
-### 1. Start the Backend Server
+### 6. Install Frontend Dependencies
 
 ```bash
-# From the AIServices directory
+cd frontend
+npm install
+```
+
+### 7. Start the Application
+
+**Terminal 1 - Backend:**
+```bash
+# From AIServices directory
 python -m backend.main
 ```
 
-The API will start on `http://localhost:8000`
-
-### 2. Open the Web Interface
-
-Open [frontend/index.html](frontend/index.html) in your browser, or serve it:
-
+**Terminal 2 - Frontend:**
 ```bash
-# Simple HTTP server
-python -m http.server 8080
-# Then open http://localhost:8080/frontend/
+# From AIServices/frontend directory
+npm run dev
 ```
 
-### 3. Generate Images
+The application will be available at:
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:8000`
+- API Docs: `http://localhost:8000/docs`
 
-1. Type a natural language description: "a majestic dragon flying over a medieval castle at sunset"
-2. The AI will enhance your prompt with optimal SD syntax and parameters
-3. Image generates automatically with explanation of prompt choices
-4. Iterate by describing changes: "make it more dramatic with storm clouds"
+### 8. Configure via Settings UI
 
-## API Endpoints
+1. Open `http://localhost:3000` in your browser
+2. Click the **Settings** tab
+3. Configure your LLM providers:
+   - Add API keys for Claude/Gemini
+   - Configure Ollama host if needed
+   - Select models from dropdown menus (click refresh button to fetch available models)
+4. Test connections to verify setup
+5. Save settings
+
+## 💡 Usage
+
+### Basic Workflow
+
+1. **Navigate to the Home tab**
+2. **Type a natural language description:**
+   - "a majestic dragon flying over a medieval castle at sunset"
+3. **Choose mode:**
+   - **Ask Questions** - AI asks clarifying questions first
+   - **Generate Directly** - Skip questions and generate immediately
+4. **AI enhances your prompt** with optimal SD syntax and parameters
+5. **Image generates automatically** with explanation of prompt choices
+6. **Iterate** by describing changes: "make it more dramatic with storm clouds"
+
+### Interactive Question Mode
+
+The AI can ask clarifying questions to better understand your vision:
+
+1. Type your basic idea: "a fantasy character"
+2. Click **"Ask Questions"**
+3. Answer questions like:
+   - "What species or type of character?"
+   - "What setting or environment?"
+   - "What mood or atmosphere?"
+4. Get a highly refined prompt based on your answers
+
+### Dual-LLM Mode Benefits
+
+When enabled (default), the application uses two LLMs:
+
+- **Planning LLM** - High-quality model for initial prompt engineering and question generation
+- **Execution LLM** - Fast model for iterations and refinements
+
+This gives you the best of both worlds: quality where it matters, speed for quick iterations.
+
+**Recommended combinations:**
+- Planning: `gemini-2.5-pro` or `claude-3-5-sonnet-20241022`
+- Execution: `gemini-2.5-flash` or `claude-3-5-haiku-20241022`
+
+## 🎨 Example Prompts
+
+**User Input:**
+> "a cozy coffee shop"
+
+**AI Enhanced Prompt:**
+```
+Positive: cozy coffee shop interior, warm lighting, wooden furniture,
+plants, books on shelves, steam from coffee cup, morning sunlight through
+windows, inviting atmosphere, detailed textures, masterpiece, best quality,
+highly detailed, 8k, photorealistic
+
+Negative: blurry, low quality, distorted, ugly, bad anatomy, dark, gloomy,
+empty, crowded
+
+Settings: 30 steps, CFG 7.5, 512x512, DPM++ 2M Karras
+```
+
+## 📚 Knowledge Base
+
+The application includes a built-in knowledge base with:
+
+- **Style Guides** - Best practices for different art styles
+- **Quality Tags** - How to use quality modifiers
+- **Negative Prompts** - Common negative prompts to avoid issues
+- **Parameter Guides** - Understanding steps, CFG, samplers
+- **Prompt Templates** - Ready-to-use templates for common scenarios
+
+Access via the **Knowledge Base** tab in the UI.
+
+## ⚙️ Settings Management
+
+### UI Settings (Recommended)
+
+Configure everything from the Settings tab:
+
+1. **LLM Configuration**
+   - Toggle Dual-LLM mode
+   - Select providers (Ollama/Claude/Gemini)
+   - Choose models from dropdown menus
+   - Test connections
+
+2. **API Keys**
+   - Add Claude API key
+   - Add Gemini API key
+   - Keys are masked in UI for security
+
+3. **Stable Diffusion**
+   - Configure SD API URL
+   - Set API timeout
+
+4. **Generation Defaults**
+   - Default steps, CFG scale
+   - Default resolution
+   - Default sampler
+
+Changes are saved to `.env` file automatically.
+
+### Manual .env Configuration
+
+You can also edit `.env` directly if preferred. The backend reads settings on startup.
+
+**Important:** After changing `.env` manually, restart the backend for changes to take effect.
+
+## 🔧 API Endpoints
 
 ### Health Check
 ```bash
 GET http://localhost:8000/health
 ```
 
-### Enhance Prompt Only
+### Get Settings
 ```bash
-POST http://localhost:8000/enhance-prompt
+GET http://localhost:8000/settings
+```
+
+### Update Settings
+```bash
+POST http://localhost:8000/settings/update
 Content-Type: application/json
 
 {
-  "user_input": "a cat wearing sunglasses",
+  "use_dual_llm": true,
+  "planning_llm_provider": "gemini",
+  "execution_llm_provider": "gemini"
+}
+```
+
+### Get Available Models
+```bash
+POST http://localhost:8000/settings/available-models
+Content-Type: application/json
+
+{
+  "provider": "gemini"
+}
+```
+
+### Test Connection
+```bash
+POST http://localhost:8000/settings/test-connection
+Content-Type: application/json
+
+{
+  "service_type": "gemini",
+  "config": {
+    "api_key": "your-key-here"
+  }
+}
+```
+
+### Generate with Questions
+```bash
+POST http://localhost:8000/interactive/questions
+Content-Type: application/json
+
+{
+  "user_input": "a fantasy character",
   "conversation_history": []
 }
 ```
@@ -196,195 +395,249 @@ Content-Type: application/json
 }
 ```
 
-## How It Works
+## 🐛 Troubleshooting
 
-1. **User describes desired image** in natural language
-2. **LLM analyzes** the description and applies Stable Diffusion best practices (via your chosen provider)
-3. **Prompt Engine** structures the enhanced prompt with:
-   - Detailed descriptors and style tags
-   - Quality tags (masterpiece, highly detailed, etc.)
-   - Negative prompts to avoid unwanted elements
-   - Optimal parameters (steps, CFG, sampler, resolution)
-4. **SD generates the image** via Automatic1111 API
-5. **Results displayed** with explanation of prompt choices
-6. **Iterate** by providing feedback to refine the result
+### Model Not Found Error (Gemini)
 
-## LLM Provider Comparison
+**Error:** `models/gemini-1.5-pro is not found for API version v1beta`
 
-| Provider | Speed | Quality | Cost | Setup |
-|----------|-------|---------|------|-------|
-| **Ollama** | Medium | Good | Free | Local install |
-| **Claude Haiku** | Very Fast | Excellent | ~$0.25/1M tokens | API key |
-| **Claude Sonnet** | Fast | Outstanding | ~$3/1M tokens | API key |
-| **Gemini Flash** | Very Fast | Very Good | Free tier available | API key |
-| **Gemini Pro** | Medium | Excellent | ~$1.25/1M tokens | API key |
+**Solution:** Update your Gemini model names in `.env` to the latest versions:
+- Old: `gemini-1.5-pro` → New: `gemini-2.5-pro`
+- Old: `gemini-1.5-flash` → New: `gemini-2.5-flash`
 
-**Recommendations:**
-- **Starting out?** Use Ollama (free, private, no API keys needed)
-- **Best quality prompts?** Claude 3.5 Sonnet (significantly better prompt engineering)
-- **Speed & cost balance?** Gemini 1.5 Flash (very fast, free tier available)
-- **Privacy conscious?** Ollama (everything runs locally)
+Or use the dropdown menus in Settings to select from current available models.
 
-## Example Prompts
-
-**User Input:**
-> "a cozy coffee shop"
-
-**AI Enhanced Prompt:**
-```
-Positive: cozy coffee shop interior, warm lighting, wooden furniture,
-plants, books on shelves, steam from coffee cup, morning sunlight through
-windows, inviting atmosphere, detailed textures, masterpiece, best quality,
-highly detailed, 8k, photorealistic
-
-Negative: blurry, low quality, distorted, ugly, bad anatomy, dark, gloomy,
-empty, crowded
-
-Settings: 30 steps, CFG 7.5, 512x512, DPM++ 2M Karras
-```
-
-## Troubleshooting
-
-### LLM Service Offline
-
-**Ollama:**
-- Ensure Ollama is running: `ollama serve`
-- Check model is downloaded: `ollama list`
-- Verify `OLLAMA_HOST` in `.env`
+### API Key Not Working
 
 **Claude:**
-- Verify API key is correct in `.env`
-- Check your API key at [Anthropic Console](https://console.anthropic.com/)
-- Ensure you have credits/billing set up
+- Verify API key at [Anthropic Console](https://console.anthropic.com/)
+- Ensure billing is set up
+- Check for typos in the key
 
 **Gemini:**
-- Verify API key is correct in `.env`
-- Check your API key at [Google AI Studio](https://aistudio.google.com/app/apikey)
+- Verify API key at [Google AI Studio](https://aistudio.google.com/app/apikey)
 - Ensure API is enabled for your project
+- Try regenerating the key if issues persist
 
-### Stable Diffusion Offline
-- Check Automatic1111 is running with `--api` flag
-- Verify `SD_API_URL` in `.env`
-- Test API: `curl http://localhost:7860/sdapi/v1/sd-models`
+### Can't Fetch Available Models
 
-### Slow Generation
-- Reduce image size (512x512 recommended for speed)
-- Reduce steps (20-30 is usually sufficient)
-- Use faster samplers like "Euler a"
-- Ensure GPU is being used by SD
-- **Try a faster LLM**: Switch to Claude Haiku or Gemini Flash
+**Issue:** "Failed to fetch gemini models: 400: Valid API key required"
 
-### JSON Parsing Errors
-- LLM might return malformed JSON occasionally
-- The app has fallback logic to handle this
-- Claude and Gemini are more reliable at JSON than local models
-- Try adjusting temperature in [backend/prompt_engine.py](backend/prompt_engine.py)
+**Solutions:**
+1. Make sure you've added your API key in Settings
+2. Click "Test Connection" to verify the key works
+3. Restart the backend after adding keys to `.env` manually
+4. Check backend logs for detailed error messages
 
-## Advanced Configuration
+### Ollama Connection Issues
 
-### Switching LLM Providers
+- Ensure Ollama is running: `ollama serve`
+- Check model is downloaded: `ollama list`
+- Verify `OLLAMA_HOST` is correct (default: `http://localhost:11434`)
+- Try restarting Ollama service
 
-Simply change `LLM_PROVIDER` in `.env`:
+### Stable Diffusion Connection Issues
 
-```env
-# Switch to Claude for better prompts
-LLM_PROVIDER=claude
-ANTHROPIC_API_KEY=your-key-here
+- Ensure Automatic1111 is running with `--api` flag
+- Verify SD API URL: `http://localhost:7860`
+- Test API manually: `curl http://localhost:7860/sdapi/v1/sd-models`
+- Check firewall settings
 
-# Or switch to Gemini for speed
-LLM_PROVIDER=gemini
-GOOGLE_API_KEY=your-key-here
+### Frontend Not Loading
 
-# Or back to Ollama for privacy
-LLM_PROVIDER=ollama
+- Ensure both backend and frontend are running
+- Check frontend is on port 3000: `npm run dev`
+- Clear browser cache and reload
+- Check browser console for errors (F12)
+
+### Multiple Backend Instances
+
+If you see intermittent errors:
+1. Check for multiple backend processes: `tasklist | findstr python` (Windows) or `ps aux | grep python` (Linux/Mac)
+2. Kill old processes
+3. Start only one backend instance
+
+## 🔬 Advanced Configuration
+
+### Custom System Prompts
+
+Edit `backend/prompt_engine.py` to modify how the AI generates prompts.
+
+### Change Models Dynamically
+
+Use the Settings UI to switch models without restarting (for most settings).
+
+For `.env` changes, restart the backend:
+```bash
+# Stop backend (Ctrl+C)
+python -m backend.main
 ```
 
-Then restart the server. No code changes needed!
+### Adjust LLM Temperature
 
-### Change LLM Model
+Edit `backend/llm_providers/` files to adjust temperature and other generation parameters.
 
-Edit `.env`:
-```env
-# For Ollama
-OLLAMA_MODEL=mistral:latest
+### Add Custom Knowledge Base Content
 
-# For Claude
-CLAUDE_MODEL=claude-3-5-haiku-20241022
+Add markdown files to:
+- `backend/knowledge_base/guides/` - For guides
+- `backend/knowledge_base/templates/` - For templates
 
-# For Gemini
-GEMINI_MODEL=gemini-1.5-pro
-```
-
-### Customize System Prompts
-
-Edit [backend/prompt_engine.py](backend/prompt_engine.py) to modify the system prompts that guide the LLM's behavior.
-
-### Adjust Default Parameters
-
-Edit `.env`:
-```env
-DEFAULT_STEPS=40
-DEFAULT_CFG_SCALE=8.0
-DEFAULT_WIDTH=768
-DEFAULT_HEIGHT=768
-```
-
-## Development
-
-### Project Structure
+## 📁 Project Structure
 
 ```
 AIServices/
 ├── backend/
-│   ├── main.py              # FastAPI server
-│   ├── config.py            # Configuration management
-│   ├── llm_service.py       # Unified LLM service (provider switcher)
-│   ├── llm_providers/       # LLM provider implementations
-│   │   ├── base.py          # Base provider interface
-│   │   ├── ollama_provider.py
-│   │   ├── claude_provider.py
-│   │   └── gemini_provider.py
-│   ├── sd_service.py        # Stable Diffusion API client
-│   ├── prompt_engine.py     # Core prompt enhancement logic
+│   ├── main.py                    # FastAPI server & endpoints
+│   ├── config.py                  # Configuration management with pydantic-settings
+│   ├── llm_service.py            # Unified LLM service (provider switcher)
+│   ├── llm_providers/            # LLM provider implementations
+│   │   ├── base.py               # Base provider interface
+│   │   ├── ollama_provider.py   # Ollama integration
+│   │   ├── claude_provider.py   # Claude integration
+│   │   └── gemini_provider.py   # Gemini integration
+│   ├── sd_service.py             # Stable Diffusion API client
+│   ├── prompt_engine.py          # Core prompt enhancement logic
+│   ├── interactive_prompter.py  # Question-based prompt creation
+│   ├── knowledge_base/           # Built-in guides and templates
+│   │   ├── guides/
+│   │   └── templates/
 │   └── models/
-│       └── schemas.py       # Pydantic models
+│       └── schemas.py            # Pydantic models for API
 ├── frontend/
-│   └── index.html           # Web interface
-├── requirements.txt         # Python dependencies
-├── .env.example            # Example configuration
-└── README.md               # This file
+│   ├── src/
+│   │   ├── components/          # React components
+│   │   │   ├── Home.jsx         # Main generation interface
+│   │   │   ├── Settings.jsx     # Settings management UI
+│   │   │   └── KnowledgeBase.jsx # Knowledge base viewer
+│   │   ├── api/
+│   │   │   └── client.js        # API client with axios
+│   │   ├── store/
+│   │   │   └── useStore.js      # Zustand state management
+│   │   ├── App.jsx              # Main app component
+│   │   ├── main.jsx             # Entry point
+│   │   └── index.css            # Tailwind CSS styles
+│   ├── index.html               # HTML entry point
+│   ├── package.json             # Frontend dependencies
+│   ├── vite.config.js           # Vite configuration
+│   └── tailwind.config.js       # Tailwind configuration
+├── .env.example                 # Example environment configuration
+├── .env                         # Your environment configuration (git-ignored)
+├── requirements.txt             # Python dependencies
+├── .gitignore                   # Git ignore rules
+└── README.md                    # This file
 ```
+
+## 🚀 LLM Provider Comparison
+
+| Provider | Speed | Quality | Cost | Privacy | Setup |
+|----------|-------|---------|------|---------|-------|
+| **Ollama** | Medium | Good | Free | Private | Local install |
+| **Claude Haiku** | Very Fast | Excellent | ~$0.25/1M tokens | Cloud | API key |
+| **Claude Sonnet** | Fast | Outstanding | ~$3/1M tokens | Cloud | API key |
+| **Gemini Flash** | Very Fast | Very Good | Free tier available | Cloud | API key |
+| **Gemini Pro** | Medium | Excellent | ~$1.25/1M tokens | Cloud | API key |
+
+**Recommendations:**
+
+**Best Quality Prompts:**
+- Planning: `claude-3-5-sonnet-20241022` or `gemini-2.5-pro`
+- Execution: `claude-3-5-haiku-20241022` or `gemini-2.5-flash`
+
+**Best Speed & Cost:**
+- Both: `gemini-2.5-flash` (very fast, free tier available)
+
+**Privacy Conscious:**
+- Both: Ollama (everything runs locally, no API calls)
+
+**Starting Out:**
+- Planning: `gemini-2.5-pro` (free tier)
+- Execution: `gemini-2.5-flash` (free tier)
+
+## 🔄 Recent Updates
+
+### Latest Changes (Current Session)
+
+1. **UI-Based Settings Management**
+   - Complete settings interface in the web UI
+   - No need to manually edit .env files
+   - Real-time validation and testing
+
+2. **Model Dropdown Menus**
+   - Automatically fetch available models from each provider
+   - Easy model selection with refresh buttons
+   - See all available models before choosing
+
+3. **Updated Gemini Model Names**
+   - Now using latest Gemini 2.5 models
+   - `gemini-2.5-pro` for quality
+   - `gemini-2.5-flash` for speed
+
+4. **Fixed Multiple Backend Instances**
+   - Resolved issue with conflicting backend processes
+   - Better startup and shutdown handling
+
+5. **Improved API Key Handling**
+   - Backend now correctly uses API keys from settings
+   - Proper masking in UI for security
+
+## 📝 Development
 
 ### Running in Development Mode
 
+**Backend with auto-reload:**
 ```bash
-# Backend with auto-reload
 python -m backend.main
-
-# The FastAPI server will reload on code changes when DEBUG=True
+# Uvicorn will reload on code changes when DEBUG=True
 ```
 
-## Future Enhancements
+**Frontend with hot-reload:**
+```bash
+cd frontend
+npm run dev
+# Vite will hot-reload on file changes
+```
+
+### Building for Production
+
+**Frontend:**
+```bash
+cd frontend
+npm run build
+# Outputs to frontend/dist/
+```
+
+Serve the built frontend with any static file server.
+
+**Backend:**
+Already production-ready. Set `DEBUG=False` in `.env` for production.
+
+## 🎯 Future Enhancements
 
 - [ ] Image iteration with img2img
-- [ ] Prompt template library
+- [ ] Prompt template library with sharing
 - [ ] Style presets (anime, photorealistic, artistic, etc.)
 - [ ] Batch generation with variations
-- [ ] Prompt history and favorites
 - [ ] Advanced parameter tuning UI
 - [ ] ControlNet integration
 - [ ] Multi-image comparison view
+- [ ] Prompt remixing from generated images
+- [ ] Integration with other SD implementations (ComfyUI, InvokeAI)
 
-## License
+## 📄 License
 
 MIT License - feel free to modify and use as you wish!
 
-## Credits
+## 🙏 Credits
 
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
+- Built with [FastAPI](https://fastapi.tiangolo.com/) and [React](https://react.dev/)
+- UI with [Tailwind CSS](https://tailwindcss.com/) and [Vite](https://vitejs.dev/)
+- State management with [Zustand](https://github.com/pmndrs/zustand)
 - LLM providers: [Ollama](https://ollama.ai/), [Anthropic Claude](https://anthropic.com/), [Google Gemini](https://ai.google.dev/)
 - Image generation via [Automatic1111 SD Web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui)
 
 ---
 
-**Note:** When using Ollama, everything runs locally on your machine. When using Claude or Gemini, prompts are sent to their respective APIs (but your generated images stay local).
+**Privacy Note:** When using Ollama, everything runs locally on your machine. When using Claude or Gemini, prompts are sent to their respective APIs (but your generated images stay local on your machine).
+
+**Important:** Make sure to keep your `.env` file secure and never commit it to version control. It contains sensitive API keys.
