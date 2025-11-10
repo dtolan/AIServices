@@ -194,3 +194,106 @@ class AvailableModelsResponse(BaseModel):
     """Response with available models"""
     provider: str
     models: List[str]
+
+
+# New schemas for Plan/Act workflow
+class ModelRecommendation(BaseModel):
+    """AI recommendation for best SD model"""
+    model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
+
+    recommended_model_name: str
+    model_filename: Optional[str] = None
+    is_installed: bool
+    reason: str
+    alternative: Optional[str] = None
+    model_details: Optional[dict] = None  # Full model info from RECOMMENDED_MODELS
+
+
+class QualityAnalysis(BaseModel):
+    """Analysis of prompt quality and suggestions"""
+    specificity_score: float = Field(..., ge=0.0, le=1.0, description="How specific is the prompt (0-1)")
+    missing_elements: List[str] = Field(default=[], description="Important missing elements")
+    warnings: List[str] = Field(default=[], description="Potential issues or conflicts")
+    strengths: List[str] = Field(default=[], description="What's good about the prompt")
+    category: str = Field(..., description="Detected category: portrait, landscape, anime, etc.")
+
+
+class ParameterReasoning(BaseModel):
+    """Reasoning for each parameter choice"""
+    steps_reason: str
+    cfg_reason: str
+    resolution_reason: str
+    sampler_reason: str
+    aspect_ratio: str = Field(..., description="portrait, landscape, or square")
+
+
+class GenerationPlan(BaseModel):
+    """Complete generation plan before execution"""
+    model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
+
+    user_input: str
+    model_recommendation: ModelRecommendation
+    enhanced_prompt: SDPrompt
+    quality_analysis: QualityAnalysis
+    parameter_reasoning: ParameterReasoning
+    explanation: str
+    tips: List[str] = Field(default=[], description="Helpful tips for this generation")
+    estimated_time: Optional[float] = Field(default=None, description="Estimated generation time in seconds")
+
+
+class GenerationPlanRequest(BaseModel):
+    """Request for generation plan (PLAN phase)"""
+    user_input: str = Field(..., description="Natural language description of desired image")
+    conversation_history: Optional[List[dict]] = Field(default=None, description="Previous conversation context")
+
+
+class ExecuteGenerationRequest(BaseModel):
+    """Request to execute a generation plan (ACT phase)"""
+    model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
+
+    plan: GenerationPlan
+    model_override: Optional[str] = Field(default=None, description="Override recommended model")
+
+
+# Img2Img Schemas
+class Img2ImgPlanRequest(BaseModel):
+    """Request for img2img generation plan (PLAN phase)"""
+    user_input: str = Field(..., description="Natural language description of desired transformation")
+    init_image_base64: str = Field(..., description="Base64 encoded source image")
+    conversation_history: Optional[List[dict]] = Field(default=None, description="Previous conversation context")
+
+
+class Img2ImgGenerationPlan(BaseModel):
+    """Complete img2img generation plan before execution"""
+    model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
+
+    user_input: str
+    model_recommendation: ModelRecommendation
+    enhanced_prompt: SDPrompt
+    quality_analysis: QualityAnalysis
+    parameter_reasoning: ParameterReasoning
+    denoising_strength: float = Field(default=0.7, ge=0.0, le=1.0, description="How much to transform the image")
+    denoising_reason: str = Field(..., description="Why this denoising strength was chosen")
+    explanation: str
+    tips: List[str] = Field(default=[], description="Helpful tips for this img2img generation")
+    estimated_time: Optional[float] = Field(default=None, description="Estimated generation time in seconds")
+
+
+class ExecuteImg2ImgRequest(BaseModel):
+    """Request to execute an img2img generation plan (ACT phase)"""
+    model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
+
+    plan: Img2ImgGenerationPlan
+    init_image_base64: str = Field(..., description="Base64 encoded source image")
+    model_override: Optional[str] = Field(default=None, description="Override recommended model")
+
+
+class Img2ImgResponse(BaseModel):
+    """Response from img2img generation"""
+    image_base64: str
+    prompt_used: SDPrompt
+    denoising_strength: float
+    llm_explanation: str = Field(..., description="LLM's explanation of choices")
+    generation_time: float
+    seed_used: int
+    source_image_base64: str = Field(..., description="Original source image for reference")

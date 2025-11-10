@@ -20,7 +20,14 @@ from backend.models.schemas import (
     ConnectionTestRequest,
     ConnectionTestResponse,
     AvailableModelsRequest,
-    AvailableModelsResponse
+    AvailableModelsResponse,
+    GenerationPlanRequest,
+    GenerationPlan,
+    ExecuteGenerationRequest,
+    Img2ImgPlanRequest,
+    Img2ImgGenerationPlan,
+    ExecuteImg2ImgRequest,
+    Img2ImgResponse
 )
 from backend.llm_service import LLMService
 from backend.sd_service import StableDiffusionService
@@ -29,6 +36,7 @@ from backend.knowledge_base import KnowledgeBase
 from backend.interactive_prompter import InteractivePrompter
 from backend.prompt_library import PromptLibrary
 from backend.settings_service import SettingsService
+from backend.model_manager import ModelManager
 
 settings = get_settings()
 
@@ -41,6 +49,7 @@ prompt_engine = PromptEngine(llm_service)
 interactive_prompter = InteractivePrompter(llm_service, knowledge_base)
 prompt_library = PromptLibrary()
 settings_service = SettingsService()
+model_manager = ModelManager()
 
 
 @asynccontextmanager
@@ -120,8 +129,8 @@ async def health():
     health_status = {
         "api": "healthy",
         "llm": "unknown",
-        "llm_provider": provider_info["provider"],
-        "llm_model": provider_info["model"],
+        "llm_provider": provider_info.get("provider") or f"{provider_info.get('planning_provider')}/{provider_info.get('execution_provider')}",
+        "llm_model": provider_info.get("model") or f"{provider_info.get('planning_model')}/{provider_info.get('execution_model')}",
         "sd": "unknown"
     }
 
@@ -206,6 +215,138 @@ async def iterate_image(request: IterationRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Iteration failed: {str(e)}")
+
+
+@app.post("/plan-generation", response_model=GenerationPlan)
+async def plan_generation(request: GenerationPlanRequest):
+    """
+    PLAN PHASE: Create a comprehensive generation plan without executing
+
+    Returns:
+    - Model recommendation with reasoning
+    - Enhanced prompt with intelligent negative prompts
+    - Quality analysis (specificity score, missing elements, warnings)
+    - Parameter reasoning (why each parameter was chosen)
+    - Tips for best results
+    """
+    try:
+        # Get installed models
+        installed_models = model_manager.get_installed_models()
+
+        # Create comprehensive plan
+        plan = await prompt_engine.create_generation_plan(
+            user_input=request.user_input,
+            installed_models=installed_models,
+            conversation_history=request.conversation_history
+        )
+
+        return plan
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create generation plan: {str(e)}")
+
+
+@app.post("/execute-generation", response_model=GenerationResponse)
+async def execute_generation(request: ExecuteGenerationRequest):
+    """
+    ACT PHASE: Execute a generation plan
+
+    Takes the plan from /plan-generation and generates the image.
+    Allows model override if user wants to use a different model than recommended.
+    """
+    try:
+        plan = request.plan
+
+        # Use model override if provided, otherwise use recommended model
+        # Note: This would integrate with SD API to switch models
+        # For now, we'll just use whatever model is currently loaded in SD
+
+        if request.model_override:
+            print(f"[INFO] User override: using model '{request.model_override}' instead of '{plan.model_recommendation.recommended_model_name}'")
+
+        # Generate image using the planned prompt
+        result = await sd_service.generate_image(plan.enhanced_prompt)
+
+        return GenerationResponse(
+            image_base64=result["image_base64"],
+            prompt_used=plan.enhanced_prompt,
+            llm_explanation=plan.explanation,
+            generation_time=result["generation_time"],
+            seed_used=result["seed"]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Execution failed: {str(e)}")
+
+
+# Img2Img Endpoints
+
+@app.post("/plan-img2img", response_model=Img2ImgGenerationPlan)
+async def plan_img2img(request: Img2ImgPlanRequest):
+    """
+    PLAN PHASE: Create a comprehensive img2img transformation plan without executing
+
+    Returns:
+    - Model recommendation with reasoning
+    - Enhanced prompt with intelligent negative prompts
+    - Denoising strength recommendation with reasoning
+    - Quality analysis (specificity score, missing elements, warnings)
+    - Parameter reasoning (why each parameter was chosen)
+    - Tips for best transformation results
+    """
+    try:
+        # Get installed models
+        installed_models = model_manager.get_installed_models()
+
+        # Create comprehensive img2img plan
+        plan = await prompt_engine.create_img2img_plan(
+            user_input=request.user_input,
+            init_image_base64=request.init_image_base64,
+            installed_models=installed_models,
+            conversation_history=request.conversation_history
+        )
+
+        return plan
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create img2img plan: {str(e)}")
+
+
+@app.post("/execute-img2img", response_model=Img2ImgResponse)
+async def execute_img2img(request: ExecuteImg2ImgRequest):
+    """
+    ACT PHASE: Execute an img2img transformation plan
+
+    Takes the plan from /plan-img2img and generates the transformed image.
+    Allows model override if user wants to use a different model than recommended.
+    """
+    try:
+        plan = request.plan
+
+        if request.model_override:
+            print(f"[INFO] User override: using model '{request.model_override}' instead of '{plan.model_recommendation.recommended_model_name}'")
+
+        # Generate image using img2img with the planned prompt and denoising strength
+        result = await sd_service.img2img(
+            prompt=plan.enhanced_prompt,
+            init_image_base64=request.init_image_base64,
+            denoising_strength=plan.denoising_strength
+        )
+
+        return Img2ImgResponse(
+            image_base64=result["image_base64"],
+            prompt_used=plan.enhanced_prompt,
+            denoising_strength=plan.denoising_strength,
+            llm_explanation=plan.explanation,
+            generation_time=result["generation_time"],
+            seed_used=result["seed"],
+            source_image_base64=request.init_image_base64
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Img2img execution failed: {str(e)}")
 
 
 @app.get("/knowledge-base", response_model=KnowledgeBaseInfo)
@@ -357,18 +498,18 @@ async def get_settings_endpoint():
             use_dual_llm=all_settings.get("USE_DUAL_LLM", "false").lower() == "true",
             planning_llm_provider=all_settings.get("PLANNING_LLM_PROVIDER", "claude"),
             planning_ollama_model=all_settings.get("PLANNING_OLLAMA_MODEL", "llama3.1:8b"),
-            planning_claude_model=all_settings.get("PLANNING_CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),
-            planning_gemini_model=all_settings.get("PLANNING_GEMINI_MODEL", "gemini-1.5-pro"),
+            planning_claude_model=all_settings.get("PLANNING_CLAUDE_MODEL", "claude-sonnet-4-5-20250929"),
+            planning_gemini_model=all_settings.get("PLANNING_GEMINI_MODEL", "gemini-2.5-pro"),
             execution_llm_provider=all_settings.get("EXECUTION_LLM_PROVIDER", "gemini"),
             execution_ollama_model=all_settings.get("EXECUTION_OLLAMA_MODEL", "llama3.2:3b"),
-            execution_claude_model=all_settings.get("EXECUTION_CLAUDE_MODEL", "claude-3-5-haiku-20241022"),
-            execution_gemini_model=all_settings.get("EXECUTION_GEMINI_MODEL", "gemini-1.5-flash"),
+            execution_claude_model=all_settings.get("EXECUTION_CLAUDE_MODEL", "claude-haiku-4-5-20251001"),
+            execution_gemini_model=all_settings.get("EXECUTION_GEMINI_MODEL", "gemini-2.5-flash"),
 
             # Single LLM Configuration
             llm_provider=all_settings.get("LLM_PROVIDER", "ollama"),
             ollama_model=all_settings.get("OLLAMA_MODEL", "llama3.2:latest"),
-            claude_model=all_settings.get("CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),
-            gemini_model=all_settings.get("GEMINI_MODEL", "gemini-1.5-flash"),
+            claude_model=all_settings.get("CLAUDE_MODEL", "claude-sonnet-4-5-20250929"),
+            gemini_model=all_settings.get("GEMINI_MODEL", "gemini-2.5-flash"),
 
             # Provider-Specific Settings
             ollama_host=all_settings.get("OLLAMA_HOST", "http://localhost:11434"),
@@ -426,8 +567,24 @@ async def update_settings_endpoint(updates: SettingsUpdate):
         # Convert SettingsUpdate to dict, excluding None values
         updates_dict = {k.upper(): str(v) for k, v in updates.dict(exclude_none=True).items()}
 
+        # Filter out masked API keys (values that start with asterisks)
+        # These are display-only values and should not be saved
+        filtered_updates = {}
+        for key, value in updates_dict.items():
+            # Skip masked values (they start with asterisks)
+            if value and value.startswith('*'):
+                continue
+            filtered_updates[key] = value
+
+        # If no valid updates remain, return early
+        if not filtered_updates:
+            return {
+                "success": True,
+                "message": "No changes to save (all values were masked)"
+            }
+
         # Validate first
-        validation_result = settings_service.validate_all_settings(updates_dict)
+        validation_result = settings_service.validate_all_settings(filtered_updates)
         if not validation_result['valid']:
             return JSONResponse(
                 status_code=400,
@@ -438,7 +595,7 @@ async def update_settings_endpoint(updates: SettingsUpdate):
             )
 
         # Update settings
-        success = settings_service.update_settings(updates_dict)
+        success = settings_service.update_settings(filtered_updates)
 
         if success:
             return {
@@ -494,16 +651,22 @@ async def test_connection_endpoint(request: ConnectionTestRequest):
             try:
                 from anthropic import AsyncAnthropic
                 api_key = config.get("api_key", "")
+
+                # If the API key is masked (starts with asterisks), use the one from settings
                 if not api_key or api_key.startswith("*"):
+                    api_key = settings.anthropic_api_key
+
+                # Check if we have a valid key now
+                if not api_key or api_key == "your-api-key-here":
                     return ConnectionTestResponse(
                         success=False,
-                        message="Valid API key required for testing"
+                        message="Valid API key required for testing. Please configure ANTHROPIC_API_KEY in .env file."
                     )
 
                 client = AsyncAnthropic(api_key=api_key)
-                # Test with a simple message
+                # Test with a simple message using the latest Claude model
                 response = await client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-5-20250929",
                     max_tokens=10,
                     messages=[{"role": "user", "content": "test"}]
                 )
@@ -522,10 +685,16 @@ async def test_connection_endpoint(request: ConnectionTestRequest):
             try:
                 import google.generativeai as genai
                 api_key = config.get("api_key", "")
+
+                # If the API key is masked (starts with asterisks), use the one from settings
                 if not api_key or api_key.startswith("*"):
+                    api_key = settings.google_api_key
+
+                # Check if we have a valid key now
+                if not api_key or api_key == "your-api-key-here":
                     return ConnectionTestResponse(
                         success=False,
-                        message="Valid API key required for testing"
+                        message="Valid API key required for testing. Please configure GOOGLE_API_KEY in .env file."
                     )
 
                 genai.configure(api_key=api_key)
@@ -638,11 +807,11 @@ async def get_available_models(request: AvailableModelsRequest):
         elif provider == "claude":
             # Claude doesn't have a list models endpoint, return known models
             known_models = [
-                "claude-3-5-sonnet-20241022",
-                "claude-3-5-haiku-20241022",
-                "claude-3-opus-20240229",
-                "claude-3-sonnet-20240229",
-                "claude-3-haiku-20240307"
+                "claude-sonnet-4-5-20250929",
+                "claude-haiku-4-5-20251001",
+                "claude-opus-4-1-20250805",
+                "claude-3-7-sonnet-20250219",
+                "claude-3-5-haiku-20241022"
             ]
             return AvailableModelsResponse(
                 provider="claude",
@@ -658,13 +827,317 @@ async def get_available_models(request: AvailableModelsRequest):
         raise HTTPException(status_code=500, detail=f"Failed to get models: {str(e)}")
 
 
+# ========================================
+# MODEL MANAGEMENT ENDPOINTS
+# ========================================
+# SD Model Management Endpoints
+# ========================================
+
+@app.get("/sd-models/recommended")
+async def get_recommended_models():
+    """Get curated list of recommended SD models"""
+    return model_manager.get_recommended_models()
+
+
+@app.get("/sd-models/installed")
+async def get_installed_models():
+    """Get list of installed SD models"""
+    return model_manager.get_installed_models()
+
+
+@app.get("/sd-models/directory")
+async def get_models_directory():
+    """Get the current models directory path"""
+    return {"path": model_manager.get_models_directory()}
+
+
+@app.post("/sd-models/directory")
+async def set_models_directory(request: dict):
+    """Set a custom models directory"""
+    path = request.get("path")
+    if not path:
+        raise HTTPException(status_code=400, detail="Path is required")
+
+    success = model_manager.set_models_directory(path)
+    if success:
+        return {"success": True, "path": model_manager.get_models_directory()}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+
+@app.delete("/sd-models/{filename}")
+async def delete_model(filename: str):
+    """Delete an installed model"""
+    success = model_manager.delete_model(filename)
+    if success:
+        return {"success": True, "message": f"Model {filename} deleted"}
+    else:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+
+@app.get("/sd-models/downloads")
+async def get_downloads_models():
+    """
+    Get list of .safetensors files in the user's Downloads folder
+    """
+    from pathlib import Path
+
+    # Get user's Downloads directory
+    downloads_dir = Path.home() / "Downloads"
+
+    if not downloads_dir.exists():
+        return {
+            "downloads_directory": str(downloads_dir),
+            "models": []
+        }
+
+    # Find all .safetensors files
+    models = []
+    for file in downloads_dir.glob("*.safetensors"):
+        size_mb = file.stat().st_size / (1024 * 1024)
+        models.append({
+            "name": file.stem,
+            "filename": file.name,
+            "path": str(file),
+            "size": f"{size_mb:.1f} MB",
+            "size_bytes": file.stat().st_size
+        })
+
+    # Sort by modification time (newest first)
+    models.sort(key=lambda x: Path(x["path"]).stat().st_mtime, reverse=True)
+
+    return {
+        "downloads_directory": str(downloads_dir),
+        "models": models
+    }
+
+
+@app.post("/sd-models/import")
+async def import_model(request: dict):
+    """
+    Import a model from an external location (e.g., Downloads folder) to the models directory
+
+    Request body:
+    {
+        "source_path": "/path/to/downloaded/model.safetensors",
+        "move": true  // Optional: if true, moves file (removes from source). If false, copies it. Default: true
+    }
+    """
+    source_path = request.get("source_path")
+    if not source_path:
+        raise HTTPException(status_code=400, detail="source_path is required")
+
+    move = request.get("move", True)  # Default to moving (cleaning up Downloads)
+
+    result = model_manager.import_model(source_path, move=move)
+
+    if result["success"]:
+        return result
+    else:
+        raise HTTPException(status_code=400, detail=result["error"])
+
+
+@app.post("/sd-models/recommend")
+async def recommend_model(request: dict):
+    """
+    Use AI to recommend the best SD model for a given prompt
+
+    Request body:
+    {
+        "prompt": "user's image description"
+    }
+    """
+    import json
+
+    prompt = request.get("prompt")
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required")
+
+    try:
+        # Get installed models
+        installed_models = model_manager.get_installed_models()
+
+        # Generate recommendation prompt
+        system_prompt = model_manager.get_model_recommendation_prompt(prompt, installed_models)
+
+        # Use execution LLM for speed (this is a quick task)
+        response = await llm_service.generate(
+            prompt="Analyze and recommend",
+            system_prompt=system_prompt,
+            temperature=0.3,  # Lower temperature for more consistent recommendations
+            use_planning_llm=False  # Use fast execution LLM
+        )
+
+        # Parse JSON response
+        response = response.strip()
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0].strip()
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0].strip()
+
+        recommendation = json.loads(response)
+
+        # Find the recommended model details
+        recommended_model = None
+        for model in model_manager.RECOMMENDED_MODELS:
+            if model["name"].lower() in recommendation["recommended_model"].lower():
+                recommended_model = model
+                break
+
+        return {
+            "recommended_model": recommendation.get("recommended_model"),
+            "is_installed": recommendation.get("is_installed", False),
+            "reason": recommendation.get("reason"),
+            "alternative": recommendation.get("alternative"),
+            "model_details": recommended_model,
+            "installed_models": installed_models
+        }
+
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse LLM recommendation: {e}")
+        print(f"Response was: {response}")
+
+        # Fallback recommendation
+        return {
+            "recommended_model": "DreamShaper 8",
+            "is_installed": False,
+            "reason": "General-purpose model recommended as fallback",
+            "model_details": model_manager.RECOMMENDED_MODELS[0],
+            "installed_models": installed_models
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate recommendation: {str(e)}")
+
+
+# Global dictionary to track download progress
+download_progress = {}
+
+
+@app.post("/sd-models/download")
+async def download_model_endpoint(request: dict):
+    """
+    Download a model from CivitAI
+
+    Request body:
+    {
+        "model_id": "4384",  # CivitAI model ID
+        "model_name": "DreamShaper 8"  # For user feedback
+    }
+    """
+    from fastapi import BackgroundTasks
+    import asyncio
+    import uuid
+
+    model_id = request.get("model_id")
+    model_name = request.get("model_name", "Unknown Model")
+
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Model ID is required")
+
+    # Generate a unique download ID
+    download_id = str(uuid.uuid4())
+
+    # Initialize progress tracking
+    download_progress[download_id] = {
+        "status": "fetching_info",
+        "model_name": model_name,
+        "progress": 0,
+        "downloaded": 0,
+        "total": 0,
+        "error": None
+    }
+
+    # Start download in background
+    async def download_task():
+        try:
+            # Get download URL from CivitAI
+            print(f"[DOWNLOAD] Starting download for model_id: {model_id}, download_id: {download_id}")
+            download_progress[download_id]["status"] = "fetching_url"
+            download_info = await model_manager.get_download_url_for_model(model_id)
+
+            if not download_info:
+                print(f"[DOWNLOAD] Failed to get download info for model_id: {model_id}")
+                download_progress[download_id]["status"] = "error"
+                download_progress[download_id]["error"] = "Failed to get download URL from CivitAI"
+                return
+
+            download_url = download_info["download_url"]
+            filename = download_info["filename"]
+            total_size = download_info["size"]
+
+            print(f"[DOWNLOAD] Got download URL, filename: {filename}, size: {total_size} bytes")
+            download_progress[download_id]["status"] = "downloading"
+            download_progress[download_id]["total"] = total_size
+            download_progress[download_id]["filename"] = filename
+
+            # Progress callback
+            def progress_callback(downloaded, total):
+                download_progress[download_id]["downloaded"] = downloaded
+                download_progress[download_id]["total"] = total
+                download_progress[download_id]["progress"] = int((downloaded / total) * 100) if total > 0 else 0
+                if downloaded % (10 * 1024 * 1024) == 0:  # Log every 10MB
+                    print(f"[DOWNLOAD] Progress: {downloaded}/{total} bytes ({download_progress[download_id]['progress']}%)")
+
+            # Download the model
+            print(f"[DOWNLOAD] Starting actual download...")
+            result = await model_manager.download_model(download_url, filename, progress_callback)
+
+            if result["success"]:
+                print(f"[DOWNLOAD] Download completed successfully: {filename}")
+                download_progress[download_id]["status"] = "completed"
+                download_progress[download_id]["progress"] = 100
+                download_progress[download_id]["path"] = result["path"]
+            else:
+                print(f"[DOWNLOAD] Download failed: {result.get('error', 'Unknown error')}")
+                download_progress[download_id]["status"] = "error"
+                download_progress[download_id]["error"] = result.get("error", "Unknown error")
+
+        except Exception as e:
+            print(f"[DOWNLOAD] Exception during download: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            download_progress[download_id]["status"] = "error"
+            download_progress[download_id]["error"] = str(e)
+
+    # Start the download task
+    asyncio.create_task(download_task())
+
+    return {
+        "download_id": download_id,
+        "message": f"Download started for {model_name}",
+        "status": "started"
+    }
+
+
+@app.get("/sd-models/download/{download_id}/progress")
+async def get_download_progress_endpoint(download_id: str):
+    """Get the progress of a model download"""
+    print(f"[PROGRESS] Request for download_id: {download_id}")
+    print(f"[PROGRESS] Available downloads: {list(download_progress.keys())}")
+
+    if download_id not in download_progress:
+        print(f"[PROGRESS] Download not found: {download_id}")
+        raise HTTPException(status_code=404, detail="Download not found")
+
+    progress_data = download_progress[download_id]
+    print(f"[PROGRESS] Returning progress: {progress_data}")
+    return progress_data
+
+
 def start():
     """Start the application"""
+    # When in debug mode, watch .env file for changes and auto-reload
+    reload_includes = None
+    if settings.debug:
+        reload_includes = ["*.env"]
+
     uvicorn.run(
         "backend.main:app",
         host=settings.app_host,
         port=settings.app_port,
-        reload=settings.debug
+        reload=settings.debug,
+        reload_includes=reload_includes
     )
 
 

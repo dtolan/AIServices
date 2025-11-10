@@ -1,13 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(5)\")",
-      "Bash(tasklist:*)",
-      "Bash(netstat:*)",
-      "Bash(taskkill /F /PID 100272 /PID 81912)",
-      "Bash(taskkill //F //PID 100272)",
-      "Bash(taskkill //F //PID 81912)",
-      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(8)\")"
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(10)\")",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(3)\")",
+      "Bash(\"C:\\Python\\Python310\\python.exe\":*)",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(2)\")",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(8)\")",
+      "Bash(npm run build:*)",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" c:GithubAIServicestest_plan_act.py)",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" test_plan_act.py)"
     ],
     "deny": [],
     "ask": []

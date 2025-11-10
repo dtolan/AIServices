@@ -9,8 +9,6 @@ from backend.llm_providers import (
 )
 from backend.hardware_detector import HardwareDetector
 
-settings = get_settings()
-
 
 class LLMRole(Enum):
     """Role of the LLM in dual-LLM setup"""
@@ -26,12 +24,15 @@ class LLMService:
     """
 
     def __init__(self):
+        # Load settings fresh for each instance
+        self.settings = get_settings()
+
         # Auto-configure Ollama if enabled
-        if settings.ollama_auto_configure:
+        if self.settings.ollama_auto_configure:
             self._auto_configure_ollama()
 
         # Initialize providers based on mode
-        if settings.use_dual_llm:
+        if self.settings.use_dual_llm:
             self.planning_provider = self._initialize_provider(LLMRole.PLANNING)
             self.execution_provider = self._initialize_provider(LLMRole.EXECUTION)
             self.provider = self.planning_provider  # Default to planning
@@ -45,13 +46,13 @@ class LLMService:
         hardware = HardwareDetector.get_hardware_summary()
 
         if hardware["gpu_detected"]:
-            if settings.use_dual_llm:
+            if self.settings.use_dual_llm:
                 # Configure dual LLM with recommended models
                 planning_rec = hardware["recommendations"]["dual_llm"]["planning"]
                 execution_rec = hardware["recommendations"]["dual_llm"]["execution"]
 
-                settings.planning_ollama_model = planning_rec["model"]
-                settings.execution_ollama_model = execution_rec["model"]
+                self.settings.planning_ollama_model = planning_rec["model"]
+                self.settings.execution_ollama_model = execution_rec["model"]
 
                 print(f"[AUTO-CONFIG] Ollama (Dual-LLM):")
                 print(f"   Planning: {planning_rec['model']} ({planning_rec['size']}) - {planning_rec['reason']}")
@@ -59,7 +60,7 @@ class LLMService:
             else:
                 # Configure single LLM
                 single_rec = hardware["recommendations"]["single_llm"]
-                settings.ollama_model = single_rec["model"]
+                self.settings.ollama_model = single_rec["model"]
 
                 print(f"[AUTO-CONFIG] Ollama: {single_rec['model']} ({single_rec['size']}) - {single_rec['reason']}")
         else:
@@ -70,37 +71,37 @@ class LLMService:
 
         # Determine which provider and model to use
         if role == LLMRole.PLANNING:
-            provider_name = settings.planning_llm_provider.lower()
-            ollama_model = settings.planning_ollama_model
-            claude_model = settings.planning_claude_model
-            gemini_model = settings.planning_gemini_model
+            provider_name = self.settings.planning_llm_provider.lower()
+            ollama_model = self.settings.planning_ollama_model
+            claude_model = self.settings.planning_claude_model
+            gemini_model = self.settings.planning_gemini_model
         elif role == LLMRole.EXECUTION:
-            provider_name = settings.execution_llm_provider.lower()
-            ollama_model = settings.execution_ollama_model
-            claude_model = settings.execution_claude_model
-            gemini_model = settings.execution_gemini_model
+            provider_name = self.settings.execution_llm_provider.lower()
+            ollama_model = self.settings.execution_ollama_model
+            claude_model = self.settings.execution_claude_model
+            gemini_model = self.settings.execution_gemini_model
         else:  # SINGLE
-            provider_name = settings.llm_provider.lower()
-            ollama_model = settings.ollama_model
-            claude_model = settings.claude_model
-            gemini_model = settings.gemini_model
+            provider_name = self.settings.llm_provider.lower()
+            ollama_model = self.settings.ollama_model
+            claude_model = self.settings.claude_model
+            gemini_model = self.settings.gemini_model
 
         # Create provider
         if provider_name == "ollama":
             return OllamaProvider(
-                base_url=settings.ollama_host,
+                base_url=self.settings.ollama_host,
                 model=ollama_model,
                 timeout=120.0
             )
         elif provider_name == "claude":
             return ClaudeProvider(
-                api_key=settings.anthropic_api_key,
+                api_key=self.settings.anthropic_api_key,
                 model=claude_model,
                 timeout=120.0
             )
         elif provider_name == "gemini":
             return GeminiProvider(
-                api_key=settings.google_api_key,
+                api_key=self.settings.google_api_key,
                 model=gemini_model,
                 timeout=120.0
             )
@@ -109,7 +110,7 @@ class LLMService:
 
     async def health_check(self) -> bool:
         """Check if the active LLM provider is available"""
-        if settings.use_dual_llm:
+        if self.settings.use_dual_llm:
             # Check both providers
             planning_ok = await self.planning_provider.health_check()
             execution_ok = await self.execution_provider.health_check()
@@ -139,7 +140,7 @@ class LLMService:
             Generated text response
         """
         # Select provider based on mode and preference
-        if settings.use_dual_llm:
+        if self.settings.use_dual_llm:
             active_provider = self.planning_provider if use_planning_llm else self.execution_provider
         else:
             active_provider = self.provider
@@ -171,7 +172,7 @@ class LLMService:
             Generated response
         """
         # Select provider based on mode and preference
-        if settings.use_dual_llm:
+        if self.settings.use_dual_llm:
             active_provider = self.planning_provider if use_planning_llm else self.execution_provider
         else:
             active_provider = self.provider
@@ -184,7 +185,7 @@ class LLMService:
 
     def get_provider_info(self) -> Dict[str, str]:
         """Get information about the current provider(s)"""
-        if settings.use_dual_llm:
+        if self.settings.use_dual_llm:
             return {
                 "mode": "dual",
                 "planning_provider": self.planning_provider.get_provider_name(),

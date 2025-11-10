@@ -39,6 +39,26 @@ export const api = {
   updateSettings: (data) => client.post('/settings/update', data),
   testConnection: (data) => client.post('/settings/test-connection', data),
   getAvailableModels: (data) => client.post('/settings/available-models', data),
+
+  // Model Management
+  getRecommendedModels: () => client.get('/sd-models/recommended'),
+  getInstalledModels: () => client.get('/sd-models/installed'),
+  getModelsDirectory: () => client.get('/sd-models/directory'),
+  getDownloadsModels: () => client.get('/sd-models/downloads'),
+  setModelsDirectory: (path) => client.post('/sd-models/directory', { path }),
+  deleteModel: (filename) => client.delete(`/sd-models/${filename}`),
+  importModel: (sourcePath, move = true) => client.post('/sd-models/import', { source_path: sourcePath, move }),
+  recommendModel: (data) => client.post('/sd-models/recommend', data),
+  downloadModel: (data) => client.post('/sd-models/download', data),
+  getDownloadProgress: (downloadId) => client.get(`/sd-models/download/${downloadId}/progress`),
+
+  // Plan/Act Workflow
+  planGeneration: (data) => client.post('/plan-generation', data),
+  executeGeneration: (data) => client.post('/execute-generation', data),
+
+  // Img2Img Plan/Act Workflow
+  planImg2Img: (data) => client.post('/plan-img2img', data),
+  executeImg2Img: (data) => client.post('/execute-img2img', data),
 }
 
 export default client

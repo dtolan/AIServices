@@ -472,6 +472,32 @@ export default function Settings() {
               </button>
             </div>
           </div>
+
+          {/* CivitAI */}
+          <div className="p-4 bg-white/5 rounded-lg space-y-3">
+            <h3 className="font-semibold">CivitAI</h3>
+            <div>
+              <label className="block text-sm mb-1">API Key</label>
+              <input
+                type={showApiKeys ? "text" : "password"}
+                value={settings.civitai_api_key || ''}
+                onChange={(e) => handleChange('civitai_api_key', e.target.value)}
+                className="input w-full"
+                placeholder="Enter your CivitAI API key"
+              />
+            </div>
+            <p className="text-xs text-gray-400">
+              Required for downloading models from CivitAI. Get your API key from{' '}
+              <a
+                href="https://civitai.com/user/account"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary-400 hover:text-primary-300 underline"
+              >
+                your CivitAI account
+              </a>
+            </p>
+          </div>
         </div>
       </div>
 

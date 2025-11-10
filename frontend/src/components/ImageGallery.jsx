@@ -1,8 +1,11 @@
-import { FiImage, FiDownload, FiRefreshCw, FiHeart } from 'react-icons/fi'
+import { FiImage, FiDownload, FiRefreshCw, FiHeart, FiInfo, FiEdit3 } from 'react-icons/fi'
+import { useState } from 'react'
 import useStore from '../store/useStore'
+import GenerationInfoModal from './GenerationInfoModal'
 
-export default function ImageGallery() {
+export default function ImageGallery({ onIterate }) {
   const { generations, currentGeneration, savePrompt } = useStore()
+  const [showInfoModal, setShowInfoModal] = useState(false)
 
   const handleDownload = (generation) => {
     const link = document.createElement('a')
@@ -37,8 +40,8 @@ export default function ImageGallery() {
       )}
 
       {currentGeneration && (
-        <div className="flex-1 flex flex-col">
-          <div className="flex-1 relative bg-black/20 rounded-lg overflow-hidden mb-4">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 relative bg-black/20 rounded-lg overflow-hidden mb-3 min-h-0">
             <img
               src={`data:image/png;base64,${currentGeneration.image_base64}`}
               alt="Generated"
@@ -46,24 +49,36 @@ export default function ImageGallery() {
             />
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <button onClick={() => handleDownload(currentGeneration)} className="btn-secondary flex items-center space-x-2">
+          <div className="space-y-2 flex-shrink-0">
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setShowInfoModal(true)} className="btn-primary flex items-center justify-center space-x-2">
+                <FiInfo className="w-4 h-4" />
+                <span>Info</span>
+              </button>
+              <button onClick={() => onIterate && onIterate(currentGeneration)} className="btn-primary flex items-center justify-center space-x-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600">
+                <FiEdit3 className="w-4 h-4" />
+                <span>Iterate</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => handleDownload(currentGeneration)} className="btn-secondary flex items-center justify-center space-x-2">
                 <FiDownload className="w-4 h-4" />
                 <span>Download</span>
               </button>
-              <button onClick={() => handleSavePrompt(currentGeneration)} className="btn-secondary flex items-center space-x-2">
+              <button onClick={() => handleSavePrompt(currentGeneration)} className="btn-secondary flex items-center justify-center space-x-2">
                 <FiHeart className="w-4 h-4" />
                 <span>Save</span>
               </button>
             </div>
-
-            <div className="glass rounded-lg p-3 text-sm">
-              <p className="text-white/70 mb-1">Positive Prompt:</p>
-              <p className="text-xs">{currentGeneration.prompt_used.positive_prompt}</p>
-            </div>
           </div>
         </div>
+      )}
+
+      {showInfoModal && currentGeneration && (
+        <GenerationInfoModal
+          generation={currentGeneration}
+          onClose={() => setShowInfoModal(false)}
+        />
       )}
 
       {generations.length > 1 && (

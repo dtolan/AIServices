@@ -4,6 +4,7 @@ A self-hosted AI prompt engineering assistant for Stable Diffusion with **flexib
 
 ## ✨ Key Features
 
+### Core Features
 - **🎨 UI-Based Settings Management** - Configure everything from the web interface, no manual .env editing needed
 - **🔄 Dual-LLM Mode** - Use different LLMs for planning (quality) vs execution (speed) tasks
 - **🤖 Multiple LLM Providers** - Choose between Ollama (free, local), Anthropic Claude (premium quality), or Google Gemini (fast & capable)
@@ -15,6 +16,16 @@ A self-hosted AI prompt engineering assistant for Stable Diffusion with **flexib
 - **🎯 Smart Parameter Suggestions** - AI recommends optimal steps, CFG, samplers based on desired output
 - **📚 Knowledge Base** - Built-in guides and templates for Stable Diffusion
 - **🔄 Prompt History** - Track your prompt evolution and iterations
+
+### Advanced Features (NEW!)
+- **🧠 Plan/Act Workflow** - AI creates detailed generation plans before executing (Phase 2)
+- **🎭 Model Recommendations** - AI suggests the best SD model for your prompt
+- **📊 Quality Analysis** - Get specificity scores and missing element warnings
+- **💡 Parameter Reasoning** - Understand why each parameter was chosen
+- **🖼️ Img2Img Support** - Transform existing images with AI-guided denoising strength
+- **📥 Drag-and-Drop Image Upload** - Easy image upload for img2img transformations
+- **🎨 Smart Model Detection** - Automatic detection and matching of installed SD models
+- **📁 Model Browser** - Download and manage SD models from CivitAI directly in the UI
 
 ## 🏗️ Architecture
 
@@ -71,18 +82,18 @@ ollama pull qwen3:8b       # Alternative: Great for creative tasks
 3. You'll add this in the Settings UI later
 
 **Available models:**
-- `claude-3-5-sonnet-20241022` - Best quality, slower (recommended for planning)
-- `claude-3-5-haiku-20241022` - Fast and good quality (recommended for execution)
-- `claude-3-opus-20240229` - Highest quality
-- `claude-3-sonnet-20240229` - Legacy version
-- `claude-3-haiku-20240307` - Legacy fast version
+- `claude-sonnet-4-5-20250929` - Best coding model, strongest for complex agents (recommended for planning)
+- `claude-haiku-4-5-20251001` - Fast and cost-effective (recommended for execution)
+- `claude-opus-4-1-20250805` - Highest quality for agentic tasks
+- `claude-3-7-sonnet-20250219` - Hybrid AI reasoning model (legacy)
+- `claude-3-5-haiku-20241022` - Legacy fast version
 
 #### Option C: Google Gemini (Cloud - Free tier available)
 
 1. Get API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. You'll add this in the Settings UI later
 
-**Current models (as of 2025):**
+**Available models (as of 2025):**
 - `gemini-2.5-flash` - Fast and capable (recommended for execution)
 - `gemini-2.5-pro` - Higher quality (recommended for planning)
 - `gemini-flash-latest` - Always uses latest flash model
@@ -247,8 +258,8 @@ When enabled (default), the application uses two LLMs:
 This gives you the best of both worlds: quality where it matters, speed for quick iterations.
 
 **Recommended combinations:**
-- Planning: `gemini-2.5-pro` or `claude-3-5-sonnet-20241022`
-- Execution: `gemini-2.5-flash` or `claude-3-5-haiku-20241022`
+- Planning: `gemini-2.5-pro` or `claude-sonnet-4-5-20250929`
+- Execution: `gemini-2.5-flash` or `claude-haiku-4-5-20251001`
 
 ## 🎨 Example Prompts
 
@@ -397,15 +408,21 @@ Content-Type: application/json
 
 ## 🐛 Troubleshooting
 
-### Model Not Found Error (Gemini)
+### Model Not Found Error (404)
 
-**Error:** `models/gemini-1.5-pro is not found for API version v1beta`
+**Error:** `Error code: 404 - {'type': 'error', 'error': {'type': 'not_found_error', 'message': 'model: ...'}`
 
-**Solution:** Update your Gemini model names in `.env` to the latest versions:
+**Solutions:**
+
+**For Gemini:**
 - Old: `gemini-1.5-pro` → New: `gemini-2.5-pro`
 - Old: `gemini-1.5-flash` → New: `gemini-2.5-flash`
 
-Or use the dropdown menus in Settings to select from current available models.
+**For Claude:**
+- Old: `claude-3-5-sonnet-20241022` → New: `claude-sonnet-4-5-20250929`
+- Old: `claude-3-5-haiku-20241022` → New: `claude-haiku-4-5-20251001`
+
+Update your model names in [.env](.env) or use the dropdown menus in Settings to select from current available models.
 
 ### API Key Not Working
 
@@ -533,16 +550,16 @@ AIServices/
 | Provider | Speed | Quality | Cost | Privacy | Setup |
 |----------|-------|---------|------|---------|-------|
 | **Ollama** | Medium | Good | Free | Private | Local install |
-| **Claude Haiku** | Very Fast | Excellent | ~$0.25/1M tokens | Cloud | API key |
-| **Claude Sonnet** | Fast | Outstanding | ~$3/1M tokens | Cloud | API key |
+| **Claude Haiku 4.5** | Very Fast | Excellent | $1/$5 per 1M tokens | Cloud | API key |
+| **Claude Sonnet 4.5** | Fast | Outstanding | $3/$15 per 1M tokens | Cloud | API key |
 | **Gemini Flash** | Very Fast | Very Good | Free tier available | Cloud | API key |
 | **Gemini Pro** | Medium | Excellent | ~$1.25/1M tokens | Cloud | API key |
 
 **Recommendations:**
 
 **Best Quality Prompts:**
-- Planning: `claude-3-5-sonnet-20241022` or `gemini-2.5-pro`
-- Execution: `claude-3-5-haiku-20241022` or `gemini-2.5-flash`
+- Planning: `claude-sonnet-4-5-20250929` or `gemini-2.5-pro`
+- Execution: `claude-haiku-4-5-20251001` or `gemini-2.5-flash`
 
 **Best Speed & Cost:**
 - Both: `gemini-2.5-flash` (very fast, free tier available)
@@ -558,26 +575,47 @@ AIServices/
 
 ### Latest Changes (Current Session)
 
-1. **UI-Based Settings Management**
+1. **Img2Img (Image-to-Image) Support** ✨ NEW!
+   - Complete Plan/Act workflow for image transformations
+   - AI-guided denoising strength recommendations with reasoning
+   - Drag-and-drop image upload with preview
+   - Base64 image handling and validation
+   - Intelligent transformation analysis based on user intent
+   - Side-by-side source/result comparison in image gallery
+
+2. **ImageUpload Component**
+   - Reusable drag-and-drop file upload component
+   - Visual feedback for drag states
+   - Image preview with hover controls
+   - File type validation
+   - Clean state management
+
+3. **Enhanced ChatPanel Integration**
+   - Seamless img2img mode toggle in chat interface
+   - Conditional workflow routing (txt2img vs img2img)
+   - State cleanup after generation
+   - Source image tracking with filename display
+
+4. **UI-Based Settings Management**
    - Complete settings interface in the web UI
    - No need to manually edit .env files
    - Real-time validation and testing
 
-2. **Model Dropdown Menus**
+5. **Model Dropdown Menus**
    - Automatically fetch available models from each provider
    - Easy model selection with refresh buttons
    - See all available models before choosing
 
-3. **Updated Gemini Model Names**
+6. **Updated Gemini Model Names**
    - Now using latest Gemini 2.5 models
    - `gemini-2.5-pro` for quality
    - `gemini-2.5-flash` for speed
 
-4. **Fixed Multiple Backend Instances**
+7. **Fixed Multiple Backend Instances**
    - Resolved issue with conflicting backend processes
    - Better startup and shutdown handling
 
-5. **Improved API Key Handling**
+8. **Improved API Key Handling**
    - Backend now correctly uses API keys from settings
    - Proper masking in UI for security
 
@@ -614,15 +652,35 @@ Already production-ready. Set `DEBUG=False` in `.env` for production.
 
 ## 🎯 Future Enhancements
 
-- [ ] Image iteration with img2img
+### Completed ✅
+- [x] Image iteration with img2img (Phase 2 - Complete)
+- [x] Plan/Act workflow with AI reasoning (Phase 2 - Complete)
+- [x] Model recommendations and management (Phase 2 - Complete)
+
+### In Progress 🚧
+- [ ] Advanced img2img controls
+  - [ ] Inpainting with mask editor
+  - [ ] Sketch-guided img2img
+  - [ ] Multi-step img2img workflows
+  - [ ] Batch img2img transformations
+
+### Planned 📋
 - [ ] Prompt template library with sharing
 - [ ] Style presets (anime, photorealistic, artistic, etc.)
 - [ ] Batch generation with variations
 - [ ] Advanced parameter tuning UI
 - [ ] ControlNet integration
+  - [ ] Canny edge detection
+  - [ ] Depth map control
+  - [ ] Pose guidance
+  - [ ] Line art control
 - [ ] Multi-image comparison view
 - [ ] Prompt remixing from generated images
 - [ ] Integration with other SD implementations (ComfyUI, InvokeAI)
+- [ ] Video generation support
+- [ ] Upscaling and enhancement workflows
+- [ ] Generation history with search and filtering
+- [ ] Export/import project configurations
 
 ## 📄 License
 

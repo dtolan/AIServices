@@ -1,9 +1,10 @@
-import { FiZap, FiBook, FiSettings } from 'react-icons/fi'
+import { FiZap, FiBook, FiSettings, FiPackage } from 'react-icons/fi'
 
 export default function Header({ activeTab, onTabChange }) {
   const tabs = [
     { id: 'generate', name: 'Generate', icon: FiZap },
     { id: 'library', name: 'Library', icon: FiBook },
+    { id: 'models', name: 'Models', icon: FiPackage },
     { id: 'settings', name: 'Settings', icon: FiSettings },
   ]
 
