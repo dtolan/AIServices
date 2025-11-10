@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(5)\")",
+      "Bash(tasklist:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill /F /PID 100272 /PID 81912)",
+      "Bash(taskkill //F //PID 100272)",
+      "Bash(taskkill //F //PID 81912)",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(8)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
