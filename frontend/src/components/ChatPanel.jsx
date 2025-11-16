@@ -135,8 +135,9 @@ const ChatPanel = forwardRef(({ onSwitchTab }, ref) => {
         plan = response.data
         setGenerationPlan(plan)
 
-        // Set default model selection to recommended model
-        setSelectedModel(plan.model_recommendation.recommended_model_name)
+        // Set default model selection to primary recommended model
+        const primaryModel = plan.model_recommendation.primary?.model_name || plan.model_recommendation.recommended_model_name
+        setSelectedModel(primaryModel)
 
         // Add plan message
         addMessage({
@@ -388,44 +389,115 @@ const ChatPanel = forwardRef(({ onSwitchTab }, ref) => {
 
                 {/* Model Recommendation */}
                 <div className="mb-4 p-3 bg-white/5 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-white/70">Recommended Model:</span>
-                    {message.plan.model_recommendation.is_installed ? (
-                      <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">
-                        Installed
-                      </span>
-                    ) : (
-                      <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
-                        Not Installed
-                      </span>
+                  <span className="text-sm font-semibold text-white/70 block mb-3">Model Recommendations:</span>
+
+                  {/* Primary Recommendation */}
+                  <div className="mb-3 p-3 bg-gradient-to-r from-primary-500/10 to-purple-500/10 border border-primary-500/30 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-primary-300 uppercase tracking-wide">Primary Choice</span>
+                      <div className="flex items-center gap-2">
+                        {message.plan.model_recommendation.primary?.confidence && (
+                          <span className={`text-xs px-2 py-0.5 rounded border ${
+                            message.plan.model_recommendation.primary.confidence === 'high'
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              : message.plan.model_recommendation.primary.confidence === 'medium'
+                              ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                              : 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                          }`}>
+                            {message.plan.model_recommendation.primary.confidence}
+                          </span>
+                        )}
+                        {message.plan.model_recommendation.primary?.is_installed ? (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">
+                            Installed
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded border border-yellow-500/30">
+                            {message.plan.model_recommendation.primary?.source === 'civitai' ? 'CivitAI' : 'Not Installed'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-base font-bold text-white mb-1">
+                      {message.plan.model_recommendation.primary?.model_name || message.plan.model_recommendation.recommended_model_name}
+                    </p>
+                    <p className="text-xs text-white/60 mb-2">
+                      {message.plan.model_recommendation.primary?.reason || message.plan.model_recommendation.reason}
+                    </p>
+
+                    {message.plan.model_recommendation.primary?.source === 'civitai' && !message.plan.model_recommendation.primary?.is_installed && (
+                      <div className="flex items-center gap-2 text-xs text-blue-400 mt-2">
+                        <FiDownload className="w-3 h-3" />
+                        <span>
+                          {message.plan.model_recommendation.primary.size_gb
+                            ? `Download size: ${message.plan.model_recommendation.primary.size_gb}GB`
+                            : 'Available on CivitAI'}
+                        </span>
+                        {message.plan.model_recommendation.primary.civitai_id && (
+                          <a
+                            href={`https://civitai.com/models/${message.plan.model_recommendation.primary.civitai_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-auto btn-secondary text-xs px-2 py-1 bg-blue-500/20 hover:bg-blue-500/30 border-blue-500/50 inline-flex items-center gap-1"
+                            onClick={() => onSwitchTab && onSwitchTab('models')}
+                          >
+                            <FiDownload className="w-3 h-3" />
+                            View on CivitAI
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <p className="text-lg font-bold text-primary-300 mb-1">
-                    {message.plan.model_recommendation.recommended_model_name}
-                  </p>
-                  <p className="text-xs text-white/60 mb-2">{message.plan.model_recommendation.reason}</p>
 
-                  {!message.plan.model_recommendation.is_installed && (
-                    <button
-                      onClick={() => onSwitchTab && onSwitchTab('models')}
-                      className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-2 bg-yellow-500/20 hover:bg-yellow-500/30 border-yellow-500/50 mt-2"
-                    >
-                      <FiDownload className="w-3 h-3" />
-                      Download Model
-                    </button>
+                  {/* Curated Alternative */}
+                  {message.plan.model_recommendation.curated_alternative && (
+                    <div className="mb-3 p-2.5 bg-white/5 border border-white/10 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-green-300 uppercase tracking-wide">Safe Alternative</span>
+                        {message.plan.model_recommendation.curated_alternative.is_installed && (
+                          <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">
+                            Installed
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-white/90">
+                        {message.plan.model_recommendation.curated_alternative.model_name}
+                      </p>
+                      <p className="text-xs text-white/50 mt-1">
+                        {message.plan.model_recommendation.curated_alternative.reason}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Installed Option */}
+                  {message.plan.model_recommendation.installed_option && (
+                    <div className="mb-3 p-2.5 bg-white/5 border border-white/10 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide">Already Installed</span>
+                        <span className="text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30">
+                          Ready to Use
+                        </span>
+                      </div>
+                      <p className="text-sm font-semibold text-white/90">
+                        {message.plan.model_recommendation.installed_option.model_name}
+                      </p>
+                      <p className="text-xs text-white/50 mt-1">
+                        {message.plan.model_recommendation.installed_option.reason}
+                      </p>
+                    </div>
                   )}
 
                   {/* Model Selector Dropdown */}
                   {installedModels.length > 0 && (
-                    <div className="mt-3">
-                      <label className="text-xs text-white/50 block mb-1">Override model (optional):</label>
+                    <div className="mt-3 pt-3 border-t border-white/10">
+                      <label className="text-xs text-white/50 block mb-1">Or choose any installed model:</label>
                       <select
-                        value={selectedModel || message.plan.model_recommendation.recommended_model_name}
+                        value={selectedModel || message.plan.model_recommendation.primary?.model_name || message.plan.model_recommendation.recommended_model_name}
                         onChange={(e) => setSelectedModel(e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded px-2 py-1 text-sm focus:outline-none focus:border-primary-500"
+                        className="input w-full text-sm"
                       >
-                        <option value={message.plan.model_recommendation.recommended_model_name}>
-                          {message.plan.model_recommendation.recommended_model_name} (Recommended)
+                        <option value={message.plan.model_recommendation.primary?.model_name || message.plan.model_recommendation.recommended_model_name}>
+                          {message.plan.model_recommendation.primary?.model_name || message.plan.model_recommendation.recommended_model_name} (Recommended)
                         </option>
                         {installedModels.map(model => (
                           <option key={model.name} value={model.name}>

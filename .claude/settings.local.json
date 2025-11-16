@@ -8,7 +8,16 @@
       "Bash(\"C:\\Python\\Python310\\python.exe\" -c \"import time; time.sleep(8)\")",
       "Bash(npm run build:*)",
       "Bash(\"C:\\Python\\Python310\\python.exe\" c:GithubAIServicestest_plan_act.py)",
-      "Bash(\"C:\\Python\\Python310\\python.exe\" test_plan_act.py)"
+      "Bash(\"C:\\Python\\Python310\\python.exe\" test_plan_act.py)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(\"C:\\Python\\Python310\\python.exe\" -m backend.main)",
+      "Bash(timeout /t 5)",
+      "Bash(curl:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -443,6 +443,16 @@ async def get_models():
         raise HTTPException(status_code=500, detail=f"Failed to get models: {str(e)}")
 
 
+@app.get("/loras")
+async def get_loras():
+    """Get available LoRAs from SD"""
+    try:
+        loras = await sd_service.get_loras()
+        return {"loras": loras}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get LoRAs: {str(e)}")
+
+
 # Prompt Library Endpoints
 @app.post("/prompts/save")
 async def save_prompt_endpoint(data: dict):
@@ -520,6 +530,10 @@ async def get_settings_endpoint():
             # Stable Diffusion API
             sd_api_url=all_settings.get("SD_API_URL", "http://localhost:7860"),
             sd_api_timeout=int(all_settings.get("SD_API_TIMEOUT", "300")),
+
+            # GPU VRAM Detection
+            vram_detection_mode=all_settings.get("VRAM_DETECTION_MODE", "auto"),
+            vram_manual_gb=float(all_settings.get("VRAM_MANUAL_GB", "8.0")),
 
             # Application Settings
             app_host=all_settings.get("APP_HOST", "0.0.0.0"),
@@ -610,6 +624,55 @@ async def update_settings_endpoint(updates: SettingsUpdate):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+
+
+@app.post("/settings/reload")
+async def reload_settings_endpoint():
+    """
+    Reload settings from .env file without restarting the application
+
+    This forces all services to re-read configuration from the .env file.
+    Useful after updating settings to apply changes immediately.
+    """
+    try:
+        global settings, llm_service, sd_service, prompt_engine
+
+        # Reload settings from .env file
+        settings = get_settings()
+
+        # Reinitialize LLM service with new settings
+        llm_service = LLMService()
+
+        # Reinitialize prompt engine with new LLM service
+        prompt_engine = PromptEngine(llm_service)
+
+        # SD service doesn't need reinitialization as it reads settings dynamically
+        # but we'll recreate it to ensure consistency
+        sd_service = StableDiffusionService()
+
+        # Get provider info to return to user
+        provider_info = llm_service.get_provider_info()
+
+        print("[INFO] Settings reloaded successfully")
+        if provider_info.get("mode") == "dual":
+            print(f"   Planning: {provider_info['planning_provider']} ({provider_info['planning_model']})")
+            print(f"   Execution: {provider_info['execution_provider']} ({provider_info['execution_model']})")
+        else:
+            print(f"   LLM: {provider_info['provider']} ({provider_info['model']})")
+
+        return {
+            "success": True,
+            "message": "Settings reloaded successfully",
+            "provider_info": provider_info
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reload settings: {str(e)}"
+        )
 
 
 @app.post("/settings/test-connection", response_model=ConnectionTestResponse)
@@ -843,6 +906,74 @@ async def get_recommended_models():
 async def get_installed_models():
     """Get list of installed SD models"""
     return model_manager.get_installed_models()
+
+
+@app.get("/gpu/memory")
+async def get_gpu_memory():
+    """
+    Get GPU VRAM information from Stable Diffusion API
+
+    Returns VRAM total, free, used in GB, plus system RAM info
+    """
+    try:
+        memory_info = await sd_service.get_memory_info()
+        return memory_info
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get GPU memory info: {str(e)}"
+        )
+
+
+@app.get("/gpu/vram")
+async def get_vram_settings():
+    """
+    Get current VRAM detection settings and detected/configured VRAM
+
+    Returns:
+    {
+        "mode": "auto" | "manual" | "disabled",
+        "manual_gb": 8.0,
+        "detected_gb": 8.0 (if mode is auto and detection successful),
+        "effective_gb": 8.0 (the value that will be used),
+        "detection_successful": true/false
+    }
+    """
+    try:
+        settings = get_settings()
+        mode = settings.vram_detection_mode
+        manual_gb = settings.vram_manual_gb
+
+        result = {
+            "mode": mode,
+            "manual_gb": manual_gb,
+            "detected_gb": None,
+            "effective_gb": None,
+            "detection_successful": False
+        }
+
+        if mode == "auto":
+            try:
+                memory_info = await sd_service.get_memory_info()
+                detected_vram = memory_info["vram_total_gb"]
+                result["detected_gb"] = detected_vram
+                result["effective_gb"] = detected_vram
+                result["detection_successful"] = True
+            except Exception as e:
+                print(f"[VRAM] Auto-detection failed: {e}")
+                result["detection_successful"] = False
+                result["effective_gb"] = None
+        elif mode == "manual":
+            result["effective_gb"] = manual_gb
+        else:  # disabled
+            result["effective_gb"] = None
+
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get VRAM settings: {str(e)}"
+        )
 
 
 @app.get("/sd-models/directory")

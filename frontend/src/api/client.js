@@ -37,6 +37,7 @@ export const api = {
   getSettings: () => client.get('/settings'),
   validateSettings: (data) => client.post('/settings/validate', data),
   updateSettings: (data) => client.post('/settings/update', data),
+  reloadSettings: () => client.post('/settings/reload'),
   testConnection: (data) => client.post('/settings/test-connection', data),
   getAvailableModels: (data) => client.post('/settings/available-models', data),
 
@@ -59,6 +60,10 @@ export const api = {
   // Img2Img Plan/Act Workflow
   planImg2Img: (data) => client.post('/plan-img2img', data),
   executeImg2Img: (data) => client.post('/execute-img2img', data),
+
+  // GPU/VRAM Detection
+  getGpuMemory: () => client.get('/gpu/memory'),
+  getVramSettings: () => client.get('/gpu/vram'),
 }
 
 export default client

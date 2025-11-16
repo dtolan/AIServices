@@ -108,6 +108,10 @@ class SettingsResponse(BaseModel):
     sd_api_url: str
     sd_api_timeout: int
 
+    # GPU VRAM Detection
+    vram_detection_mode: str = "auto"  # "auto", "manual", "disabled"
+    vram_manual_gb: float = 8.0
+
     # Application Settings
     app_host: str
     app_port: int
@@ -146,6 +150,9 @@ class SettingsUpdate(BaseModel):
 
     sd_api_url: Optional[str] = None
     sd_api_timeout: Optional[int] = None
+
+    vram_detection_mode: Optional[str] = None
+    vram_manual_gb: Optional[float] = None
 
     app_host: Optional[str] = None
     app_port: Optional[int] = None
@@ -197,14 +204,38 @@ class AvailableModelsResponse(BaseModel):
 
 
 # New schemas for Plan/Act workflow
+class ModelRecommendationTier(BaseModel):
+    """Single model recommendation tier"""
+    model_config = {"protected_namespaces": ()}
+
+    model_name: str
+    is_installed: bool = False
+    reason: str
+    source: str = "curated"  # "civitai", "curated", or "installed"
+    confidence: Optional[str] = None  # "high", "medium", "low"
+    download_url: Optional[str] = None
+    civitai_id: Optional[str] = None
+    size_gb: Optional[float] = None
+
+
 class ModelRecommendation(BaseModel):
-    """AI recommendation for best SD model"""
+    """AI recommendation for best SD model with 3-tier system"""
     model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
 
-    recommended_model_name: str
+    # Primary recommendation (can be any model)
+    primary: ModelRecommendationTier
+
+    # Best from curated list
+    curated_alternative: Optional[ModelRecommendationTier] = None
+
+    # Best from installed models
+    installed_option: Optional[ModelRecommendationTier] = None
+
+    # Legacy fields for backward compatibility
+    recommended_model_name: str  # Same as primary.model_name
     model_filename: Optional[str] = None
-    is_installed: bool
-    reason: str
+    is_installed: bool  # Same as primary.is_installed
+    reason: str  # Same as primary.reason
     alternative: Optional[str] = None
     model_details: Optional[dict] = None  # Full model info from RECOMMENDED_MODELS
 
@@ -227,6 +258,14 @@ class ParameterReasoning(BaseModel):
     aspect_ratio: str = Field(..., description="portrait, landscape, or square")
 
 
+class LoRARecommendation(BaseModel):
+    """LoRA recommendation"""
+    name: str = Field(..., description="LoRA name/filename")
+    weight: float = Field(default=1.0, ge=0.0, le=2.0, description="LoRA weight/strength")
+    reason: str = Field(..., description="Why this LoRA is recommended")
+    is_installed: bool = Field(default=False, description="Whether LoRA is installed")
+
+
 class GenerationPlan(BaseModel):
     """Complete generation plan before execution"""
     model_config = {"protected_namespaces": ()}  # Disable model_ namespace protection
@@ -239,6 +278,7 @@ class GenerationPlan(BaseModel):
     explanation: str
     tips: List[str] = Field(default=[], description="Helpful tips for this generation")
     estimated_time: Optional[float] = Field(default=None, description="Estimated generation time in seconds")
+    lora_recommendations: List[LoRARecommendation] = Field(default=[], description="Recommended LoRAs for this generation")
 
 
 class GenerationPlanRequest(BaseModel):

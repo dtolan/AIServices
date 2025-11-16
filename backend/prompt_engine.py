@@ -13,6 +13,220 @@ class PromptEngine:
     def __init__(self, llm_service: LLMService):
         self.llm = llm_service
 
+    async def _get_effective_vram(self) -> Optional[float]:
+        """
+        Get the effective VRAM value based on detection mode
+
+        Returns:
+            VRAM in GB, or None if disabled or detection failed
+        """
+        from backend.sd_service import StableDiffusionService
+
+        settings = get_settings()
+        mode = settings.vram_detection_mode
+
+        if mode == "disabled":
+            return None
+        elif mode == "manual":
+            return settings.vram_manual_gb
+        elif mode == "auto":
+            try:
+                sd_service = StableDiffusionService()
+                memory_info = await sd_service.get_memory_info()
+                return memory_info["vram_total_gb"]
+            except Exception as e:
+                print(f"[VRAM] Auto-detection failed: {e}")
+                return None
+        else:
+            return None
+
+    async def _get_3tier_model_recommendation(
+        self,
+        user_input: str,
+        installed_models: List[Dict],
+        model_manager,
+        max_retries: int = 2
+    ) -> Dict:
+        """
+        Get 3-tier model recommendation with CivitAI validation and retry logic
+
+        Returns:
+            Dict with primary, curated_alternative, and installed_option tiers
+        """
+        from backend.models.schemas import ModelRecommendationTier
+
+        for attempt in range(max_retries):
+            print(f"\n[MODEL REC] Attempt {attempt + 1}/{max_retries}", flush=True)
+
+            # Get recommendation from LLM
+            model_rec_prompt = model_manager.get_model_recommendation_prompt(
+                user_prompt=user_input,
+                installed_models=installed_models,
+                allow_any_model=True
+            )
+
+            model_rec_response = await self.llm.generate(
+                prompt=model_rec_prompt,
+                system_prompt="",
+                temperature=0.5,
+                use_planning_llm=True
+            )
+
+            # Parse response
+            model_rec_response = model_rec_response.strip()
+            if "```json" in model_rec_response:
+                model_rec_response = model_rec_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in model_rec_response:
+                model_rec_response = model_rec_response.split("```")[1].split("```")[0].strip()
+
+            try:
+                rec_data = json.loads(model_rec_response)
+            except json.JSONDecodeError as e:
+                print(f"[MODEL REC] JSON parse error: {e}", flush=True)
+                continue
+
+            # Extract primary recommendation
+            primary_data = rec_data.get("primary_recommendation", {})
+            primary_model_name = primary_data.get("model_name")
+            primary_source = primary_data.get("source", "curated")
+
+            print(f"[MODEL REC] Primary: {primary_model_name} (source: {primary_source})", flush=True)
+
+            # Validate primary if it's from CivitAI
+            primary_validated = False
+            primary_download_url = None
+            primary_civitai_id = None
+            primary_size_gb = None
+
+            if primary_source == "civitai":
+                print(f"[MODEL REC] Validating CivitAI model: {primary_model_name}", flush=True)
+                validation_result = await model_manager.validate_model_exists(primary_model_name)
+
+                if validation_result and validation_result.get("exists"):
+                    primary_validated = True
+                    primary_download_url = validation_result.get("download_url")
+                    primary_civitai_id = str(validation_result.get("id"))
+                    primary_size_gb = validation_result.get("size_gb")
+                    print(f"[MODEL REC] ✓ Model validated on CivitAI", flush=True)
+                else:
+                    print(f"[MODEL REC] ✗ Model NOT found on CivitAI", flush=True)
+                    if attempt < max_retries - 1:
+                        print(f"[MODEL REC] Retrying with constraint...", flush=True)
+                        # Add constraint for retry
+                        continue
+                    else:
+                        # Fall back to curated on final attempt
+                        print(f"[MODEL REC] Using curated alternative as primary", flush=True)
+                        curated_data = rec_data.get("curated_alternative", {})
+                        primary_model_name = curated_data.get("model_name")
+                        primary_source = "curated"
+                        primary_data["reason"] = curated_data.get("reason", "Curated safe choice")
+            else:
+                primary_validated = True  # Curated and installed don't need validation
+
+            # Check if primary is installed
+            primary_is_installed = self._check_model_installed(primary_model_name, installed_models)
+
+            # Build primary tier
+            primary_tier = ModelRecommendationTier(
+                model_name=primary_model_name,
+                is_installed=primary_is_installed,
+                reason=primary_data.get("reason", "Best match for your prompt"),
+                source=primary_source,
+                confidence=primary_data.get("confidence", "high"),
+                download_url=primary_download_url,
+                civitai_id=primary_civitai_id,
+                size_gb=primary_size_gb
+            )
+
+            # Build curated alternative tier
+            curated_tier = None
+            curated_data = rec_data.get("curated_alternative", {})
+            if curated_data and curated_data.get("model_name"):
+                curated_is_installed = self._check_model_installed(curated_data["model_name"], installed_models)
+                curated_tier = ModelRecommendationTier(
+                    model_name=curated_data["model_name"],
+                    is_installed=curated_is_installed,
+                    reason=curated_data.get("reason", "Curated safe choice"),
+                    source="curated",
+                    confidence="high"
+                )
+
+            # Build installed option tier
+            installed_tier = None
+            installed_data = rec_data.get("installed_option", {})
+            if installed_data and installed_data.get("model_name"):
+                installed_tier = ModelRecommendationTier(
+                    model_name=installed_data["model_name"],
+                    is_installed=True,
+                    reason=installed_data.get("reason", "Available on your system"),
+                    source="installed",
+                    confidence="medium"
+                )
+
+            return {
+                "primary": primary_tier,
+                "curated_alternative": curated_tier,
+                "installed_option": installed_tier
+            }
+
+        # If all retries failed, return curated default
+        print(f"[MODEL REC] All attempts failed, using default", flush=True)
+        return self._get_default_model_recommendation(installed_models)
+
+    def _check_model_installed(self, model_name: str, installed_models: List[Dict]) -> bool:
+        """Check if a model is installed with fuzzy matching"""
+        import re
+
+        def normalize_name(name: str) -> str:
+            """Normalize model name for comparison"""
+            # Remove file extensions
+            name = re.sub(r'\.(safetensors|ckpt|pt)$', '', name, flags=re.IGNORECASE)
+            # Remove common suffixes (but keep version numbers in the base name)
+            name = re.sub(r'[_-](pruned|fp16|fp32|ema|inpainting|no-ema|vae|fix).*$', '', name, flags=re.IGNORECASE)
+            # Replace underscores and hyphens with spaces for consistency
+            name = re.sub(r'[_-]', ' ', name)
+            # Collapse multiple spaces
+            name = re.sub(r'\s+', ' ', name).strip()
+            return name.lower()
+
+        model_name_normalized = normalize_name(model_name)
+
+        for m in installed_models:
+            installed_name = m.get("name", m.get("filename", ""))
+            installed_normalized = normalize_name(installed_name)
+
+            # Direct substring match
+            if model_name_normalized in installed_normalized or installed_normalized in model_name_normalized:
+                return True
+
+            # Also try matching without spaces (for cases like "dreamshaper8" vs "dreamshaper 8")
+            model_compact = model_name_normalized.replace(' ', '')
+            installed_compact = installed_normalized.replace(' ', '')
+            if model_compact in installed_compact or installed_compact in model_compact:
+                return True
+
+        return False
+
+    def _get_default_model_recommendation(self, installed_models: List[Dict]) -> Dict:
+        """Get default recommendation when all else fails"""
+        from backend.models.schemas import ModelRecommendationTier
+
+        # Default to DreamShaper 8
+        primary_tier = ModelRecommendationTier(
+            model_name="DreamShaper 8",
+            is_installed=self._check_model_installed("DreamShaper 8", installed_models),
+            reason="General-purpose model suitable for most prompts",
+            source="curated",
+            confidence="medium"
+        )
+
+        return {
+            "primary": primary_tier,
+            "curated_alternative": None,
+            "installed_option": None
+        }
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt with SD knowledge"""
         return """You are an expert Stable Diffusion prompt engineer. Your role is to help users create high-quality image prompts.
@@ -373,9 +587,30 @@ Modify the prompt to address the user's feedback."""
         print(f"User input: '{user_input}'", flush=True)
         print("=" * 80, flush=True)
 
-        # Build comprehensive planning prompt
-        system_prompt = """You are an expert at analyzing image generation requests and providing detailed, actionable plans.
+        # Get VRAM info
+        vram_gb = await self._get_effective_vram()
+        vram_info = ""
+        if vram_gb is not None:
+            print(f"[VRAM] Using VRAM constraint: {vram_gb}GB", flush=True)
+            vram_info = f"""
+Available GPU VRAM: {vram_gb}GB
 
+IMPORTANT: Consider VRAM constraints when recommending parameters:
+- Models: SD 1.5 models (~2GB) require 4GB+ VRAM, SDXL models (~6.5GB) require 8GB+ VRAM
+- Resolution constraints by VRAM:
+  * 4GB VRAM: Max 512x512, AVOID higher resolutions and SDXL models
+  * 6GB VRAM: Up to 768x768 comfortable, AVOID SDXL models
+  * 8GB+ VRAM: 1024x1024 and SDXL models possible
+  * 12GB+ VRAM: High resolutions (1024x1536), batch generation
+- If VRAM is low (≤4GB), prioritize quality over resolution - stay at 512x512
+- Recommend SDXL models ONLY if VRAM >= 8GB
+"""
+        else:
+            print("[VRAM] VRAM detection disabled or unavailable", flush=True)
+
+        # Build comprehensive planning prompt
+        system_prompt = f"""You are an expert at analyzing image generation requests and providing detailed, actionable plans.
+{vram_info}
 Analyze the user's request and provide:
 1. Image category (portrait, landscape, anime, photorealistic, artistic, concept art, etc.)
 2. Quality analysis (specificity score 0-1, missing elements, warnings, strengths)
@@ -387,10 +622,15 @@ Consider:
 - Aspect ratio from content (portrait of person → vertical, landscape scene → horizontal)
 - Complexity for steps (simple → 25-30, detailed → 35-45)
 - Style-aware sampling recommendations
-- Potential conflicts or issues
+- Potential conflicts or issues{" - ESPECIALLY VRAM constraints" if vram_gb else ""}
+
+IMPORTANT for tips:
+- Phrase negative prompt suggestions as what to AVOID (e.g., "To avoid unwanted elements, consider these negative tags: 'blurry, distorted'")
+- Don't say "add negative prompts" followed by positive-sounding words
+- Tips should be actionable advice like "Try increasing steps for more detail" or "Use a lower CFG for more creative freedom"
 
 Respond ONLY with valid JSON in this format:
-{
+{{
   "category": "portrait",
   "specificity_score": 0.8,
   "missing_elements": ["lighting direction", "mood"],
@@ -409,7 +649,7 @@ Respond ONLY with valid JSON in this format:
   "sampler_reason": "DPM++ 2M Karras for balanced, high-quality results",
   "explanation": "Overall plan explanation",
   "tips": ["tip1", "tip2"]
-}"""
+}}"""
 
         user_prompt = f"""User wants to generate: "{user_input}"
 
@@ -433,96 +673,15 @@ Analyze this request and create a detailed generation plan."""
 
             data = json.loads(response)
 
-            # Get model recommendation
-            model_rec_prompt = model_manager.get_model_recommendation_prompt(
-                user_prompt=user_input,
-                installed_models=installed_models
+            # Get 3-tier model recommendation with validation
+            tier_recommendations = await self._get_3tier_model_recommendation(
+                user_input=user_input,
+                installed_models=installed_models,
+                model_manager=model_manager
             )
 
-            model_rec_response = await self.llm.generate(
-                prompt=model_rec_prompt,
-                system_prompt="",
-                temperature=0.5,
-                use_planning_llm=True
-            )
-
-            # Parse model recommendation
-            model_rec_response = model_rec_response.strip()
-            if "```json" in model_rec_response:
-                model_rec_response = model_rec_response.split("```json")[1].split("```")[0].strip()
-            elif "```" in model_rec_response:
-                model_rec_response = model_rec_response.split("```")[1].split("```")[0].strip()
-
-            model_rec_data = json.loads(model_rec_response)
-
-            # Find model details from RECOMMENDED_MODELS
-            model_details = None
-            for model in model_manager.RECOMMENDED_MODELS:
-                if model["name"].lower() == model_rec_data["recommended_model"].lower():
-                    model_details = model
-                    break
-
-            # Check if recommended model is installed with improved matching
-            recommended_name = model_rec_data["recommended_model"].lower()
-
-            # Debug logging with flush to ensure immediate output
-            print(f"\n[MODEL DETECTION DEBUG]", flush=True)
-            print(f"  Recommended model: '{model_rec_data['recommended_model']}'", flush=True)
-            print(f"  Installed models count: {len(installed_models)}", flush=True)
-            print(f"  Installed model names:", flush=True)
-            for m in installed_models:
-                print(f"    - {m.get('name', m.get('filename', 'Unknown'))}", flush=True)
-
-            # More flexible matching logic
-            def model_matches(installed_name: str, recommended_name: str) -> bool:
-                """Check if installed model matches recommended model name"""
-                import re
-
-                installed_lower = installed_name.lower()
-                recommended_lower = recommended_name.lower()
-
-                # Direct substring match (existing logic)
-                if recommended_lower in installed_lower or installed_lower in recommended_lower:
-                    return True
-
-                # Extract base names by removing common patterns
-                # Patterns: version numbers, file extensions, special characters
-                def normalize_name(name: str) -> str:
-                    # Remove file extension
-                    name = re.sub(r'\.(safetensors|ckpt|pt)$', '', name, flags=re.IGNORECASE)
-                    # Remove version patterns like _v1, -v2.0, _8, etc.
-                    name = re.sub(r'[_-]v?\d+(\.\d+)?', '', name)
-                    # Remove common suffixes
-                    name = re.sub(r'[_-](pruned|fp16|fp32|ema|inpainting|no-ema)', '', name, flags=re.IGNORECASE)
-                    # Remove special characters and extra spaces
-                    name = re.sub(r'[_-]', ' ', name)
-                    name = re.sub(r'\s+', ' ', name).strip()
-                    return name
-
-                installed_normalized = normalize_name(installed_lower)
-                recommended_normalized = normalize_name(recommended_lower)
-
-                # Check normalized names
-                if installed_normalized == recommended_normalized:
-                    return True
-                if recommended_normalized in installed_normalized or installed_normalized in recommended_normalized:
-                    return True
-
-                return False
-
-            is_installed = False
-            matched_model = None
-            for m in installed_models:
-                model_name = m.get("name", m.get("filename", ""))
-                if model_matches(model_name, recommended_name):
-                    is_installed = True
-                    matched_model = model_name
-                    break
-
-            print(f"  Match result: {'FOUND' if is_installed else 'NOT FOUND'}", flush=True)
-            if is_installed:
-                print(f"  Matched with: '{matched_model}'", flush=True)
-            print("", flush=True)
+            # Extract primary tier for legacy compatibility
+            primary_tier = tier_recommendations["primary"]
 
             # Get smart negative prompt
             category = data.get("category", "general")
@@ -543,16 +702,21 @@ Analyze this request and create a detailed generation plan."""
                 seed=-1
             )
 
-            # Build complete plan
+            # Build complete plan with 3-tier model recommendation
             plan = GenerationPlan(
                 user_input=user_input,
                 model_recommendation=ModelRecommendation(
-                    recommended_model_name=model_rec_data["recommended_model"],
+                    # New 3-tier structure
+                    primary=primary_tier,
+                    curated_alternative=tier_recommendations.get("curated_alternative"),
+                    installed_option=tier_recommendations.get("installed_option"),
+                    # Legacy fields for backward compatibility
+                    recommended_model_name=primary_tier.model_name,
                     model_filename=None,  # Will be set when model is selected
-                    is_installed=is_installed,
-                    reason=model_rec_data.get("reason", "Best match for your prompt"),
-                    alternative=model_rec_data.get("alternative"),
-                    model_details=model_details
+                    is_installed=primary_tier.is_installed,
+                    reason=primary_tier.reason,
+                    alternative=tier_recommendations.get("curated_alternative").model_name if tier_recommendations.get("curated_alternative") else None,
+                    model_details=None  # TODO: Look up from RECOMMENDED_MODELS if needed
                 ),
                 enhanced_prompt=sd_prompt,
                 quality_analysis=QualityAnalysis(
@@ -587,9 +751,22 @@ Analyze this request and create a detailed generation plan."""
             basic_prompt = f"{user_input}, masterpiece, best quality, highly detailed"
             smart_negative = self._get_smart_negative_prompt(category, basic_prompt)
 
+            # Build fallback with 3-tier structure
+            from backend.models.schemas import ModelRecommendationTier
+            fallback_primary = ModelRecommendationTier(
+                model_name="DreamShaper 8",
+                is_installed=False,
+                reason="General-purpose model suitable for most prompts",
+                source="curated",
+                confidence="medium"
+            )
+
             return GenerationPlan(
                 user_input=user_input,
                 model_recommendation=ModelRecommendation(
+                    primary=fallback_primary,
+                    curated_alternative=None,
+                    installed_option=None,
                     recommended_model_name="DreamShaper 8",
                     is_installed=False,
                     reason="General-purpose model suitable for most prompts",
@@ -658,9 +835,28 @@ Analyze this request and create a detailed generation plan."""
         print(f"User input: '{user_input}'", flush=True)
         print("=" * 80, flush=True)
 
-        # Build comprehensive planning prompt for img2img
-        system_prompt = """You are an expert at analyzing img2img requests and providing detailed transformation plans.
+        # Get VRAM info
+        vram_gb = await self._get_effective_vram()
+        vram_info = ""
+        if vram_gb is not None:
+            print(f"[VRAM] Using VRAM constraint: {vram_gb}GB", flush=True)
+            vram_info = f"""
+Available GPU VRAM: {vram_gb}GB
 
+IMPORTANT: Consider VRAM constraints when recommending parameters:
+- Models: SD 1.5 models (~2GB) require 4GB+ VRAM, SDXL models (~6.5GB) require 8GB+ VRAM
+- Resolution: Must match source image, but be aware of limits:
+  * 4GB VRAM: Max 512x512, AVOID higher and SDXL
+  * 6GB VRAM: Up to 768x768, AVOID SDXL
+  * 8GB+ VRAM: Up to 1024x1024, SDXL possible
+- Recommend SDXL models ONLY if VRAM >= 8GB
+"""
+        else:
+            print("[VRAM] VRAM detection disabled or unavailable", flush=True)
+
+        # Build comprehensive planning prompt for img2img
+        system_prompt = f"""You are an expert at analyzing img2img requests and providing detailed transformation plans.
+{vram_info}
 For img2img generation, analyze:
 1. What transformation is requested (style change, detail addition, modification, etc.)
 2. How much the source image should be changed (affects denoising strength)
@@ -677,10 +873,10 @@ Consider:
 - Keep aspect ratio from source image in most cases
 - Lower denoising preserves more of original image
 - Higher steps help with complex transformations
-- Style-specific sampling recommendations
+- Style-specific sampling recommendations{" - and VRAM constraints" if vram_gb else ""}
 
 Respond ONLY with valid JSON in this format:
-{
+{{
   "category": "style_transfer",
   "specificity_score": 0.8,
   "missing_elements": [],
@@ -701,7 +897,7 @@ Respond ONLY with valid JSON in this format:
   "sampler_reason": "DPM++ 2M Karras for high-quality img2img",
   "explanation": "Overall transformation plan explanation",
   "tips": ["tip1", "tip2"]
-}"""
+}}"""
 
         user_prompt = f"""User wants to transform an image: "{user_input}"
 

@@ -348,7 +348,16 @@ export default function ModelBrowser() {
     await handleDownloadModel(aiRecommendation.model_details, false)
   }
 
-  const isModelInstalled = (modelName) => {
+  const isModelInstalled = (model) => {
+    // If model has a filename_pattern field, use that for matching
+    if (model.filename_pattern) {
+      return installedModels.some(m =>
+        m.name.toLowerCase().includes(model.filename_pattern.toLowerCase())
+      )
+    }
+
+    // Fallback to old matching logic for models without filename_pattern
+    const modelName = typeof model === 'string' ? model : model.name
     return installedModels.some(m =>
       m.name.toLowerCase().includes(modelName.toLowerCase()) ||
       modelName.toLowerCase().includes(m.name.toLowerCase())
@@ -652,7 +661,7 @@ export default function ModelBrowser() {
       {activeTab === 'recommended' && (
         <div className="grid md:grid-cols-2 gap-4">
           {recommendedModels.map((model) => {
-            const installed = isModelInstalled(model.name)
+            const installed = isModelInstalled(model)
             const downloading = cardDownloads[model.id]
 
             return (
@@ -704,22 +713,11 @@ export default function ModelBrowser() {
                     href={model.civitai_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn-secondary flex-1 text-sm justify-center"
+                    className="btn-primary flex-1 text-sm justify-center"
                   >
                     <FiExternalLink className="inline mr-2" />
-                    View on CivitAI
+                    {installed ? 'View on CivitAI' : 'Download from CivitAI'}
                   </a>
-                  {!installed && (
-                    <a
-                      href={model.civitai_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-primary text-sm"
-                    >
-                      <FiDownload className="inline mr-2" />
-                      Download
-                    </a>
-                  )}
                 </div>
               </div>
             )

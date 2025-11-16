@@ -21,6 +21,8 @@ export default function Settings() {
     claude: false,
     gemini: false
   })
+  const [vramInfo, setVramInfo] = useState(null)
+  const [detectingVram, setDetectingVram] = useState(false)
 
   useEffect(() => {
     loadSettings()
@@ -34,10 +36,30 @@ export default function Settings() {
       setOriginalSettings(response.data)
       // Auto-load Ollama models since it doesn't require API key
       fetchAvailableModels('ollama')
+      // Load VRAM info if auto-detection is enabled
+      if (response.data.vram_detection_mode === 'auto') {
+        fetchVramInfo()
+      }
     } catch (error) {
       setMessage({ type: 'error', text: `Failed to load settings: ${error.message}` })
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchVramInfo = async () => {
+    try {
+      setDetectingVram(true)
+      const response = await api.getGpuMemory()
+      setVramInfo(response.data)
+    } catch (error) {
+      console.error('Failed to fetch VRAM info:', error)
+      setVramInfo({
+        detection_successful: false,
+        error: error.response?.data?.detail || error.message
+      })
+    } finally {
+      setDetectingVram(false)
     }
   }
 
@@ -79,6 +101,10 @@ export default function Settings() {
 
   const handleChange = (key, value) => {
     setSettings(prev => ({ ...prev, [key]: value }))
+    // Auto-fetch VRAM info when switching to auto mode
+    if (key === 'vram_detection_mode' && value === 'auto') {
+      fetchVramInfo()
+    }
   }
 
   const hasChanges = () => {
@@ -88,11 +114,27 @@ export default function Settings() {
   const handleSave = async () => {
     try {
       setSaving(true)
+
+      // Save settings to .env file
       await api.updateSettings(settings)
-      setMessage({
-        type: 'success',
-        text: 'Settings saved! Please restart the application for changes to take effect.'
-      })
+
+      // Reload settings in backend to apply changes immediately
+      try {
+        const reloadResponse = await api.reloadSettings()
+        setMessage({
+          type: 'success',
+          text: 'Settings saved and applied successfully! Changes are now active.'
+        })
+        console.log('Settings reloaded:', reloadResponse.data)
+      } catch (reloadError) {
+        // Settings were saved but reload failed
+        console.error('Failed to reload settings:', reloadError)
+        setMessage({
+          type: 'success',
+          text: 'Settings saved! Please restart the application for changes to take effect.'
+        })
+      }
+
       setOriginalSettings(settings)
     } catch (error) {
       setMessage({ type: 'error', text: `Failed to save settings: ${error.message}` })
@@ -534,6 +576,160 @@ export default function Settings() {
         >
           {testingConnection === 'sd' ? 'Testing...' : 'Test Connection'}
         </button>
+      </div>
+
+      {/* GPU VRAM Detection */}
+      <div className="card">
+        <h2 className="text-xl font-bold mb-4">GPU VRAM Detection</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          VRAM information helps the AI recommend appropriate resolutions and models for your GPU.
+        </p>
+
+        <div className="space-y-4">
+          {/* Detection Mode */}
+          <div>
+            <label className="block text-sm mb-2 font-semibold">Detection Mode</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                <input
+                  type="radio"
+                  name="vram_detection_mode"
+                  value="auto"
+                  checked={settings.vram_detection_mode === 'auto'}
+                  onChange={(e) => handleChange('vram_detection_mode', e.target.value)}
+                  className="w-4 h-4"
+                />
+                <div className="flex-1">
+                  <div className="font-medium">Auto-detect from Stable Diffusion API</div>
+                  <div className="text-xs text-gray-400">Recommended - Automatically detects GPU VRAM</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                <input
+                  type="radio"
+                  name="vram_detection_mode"
+                  value="manual"
+                  checked={settings.vram_detection_mode === 'manual'}
+                  onChange={(e) => handleChange('vram_detection_mode', e.target.value)}
+                  className="w-4 h-4"
+                />
+                <div className="flex-1">
+                  <div className="font-medium">Manual Entry</div>
+                  <div className="text-xs text-gray-400">Manually specify your GPU VRAM amount</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 bg-white/5 rounded-lg cursor-pointer hover:bg-white/10 transition-colors">
+                <input
+                  type="radio"
+                  name="vram_detection_mode"
+                  value="disabled"
+                  checked={settings.vram_detection_mode === 'disabled'}
+                  onChange={(e) => handleChange('vram_detection_mode', e.target.value)}
+                  className="w-4 h-4"
+                />
+                <div className="flex-1">
+                  <div className="font-medium">Disabled</div>
+                  <div className="text-xs text-gray-400">Don't use VRAM information</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Manual VRAM Input */}
+          {settings.vram_detection_mode === 'manual' && (
+            <div className="p-4 bg-white/5 rounded-lg">
+              <label className="block text-sm mb-2">GPU VRAM (GB)</label>
+              <input
+                type="number"
+                step="0.5"
+                min="1"
+                max="80"
+                value={settings.vram_manual_gb}
+                onChange={(e) => handleChange('vram_manual_gb', parseFloat(e.target.value))}
+                className="input w-full md:w-48"
+                placeholder="e.g., 8.0"
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                Enter your GPU's VRAM in gigabytes (e.g., 8.0 for 8GB)
+              </p>
+            </div>
+          )}
+
+          {/* Detection Status */}
+          {settings.vram_detection_mode === 'auto' && (
+            <div className="p-4 bg-white/5 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Detection Status</h3>
+                <button
+                  onClick={fetchVramInfo}
+                  className="btn-secondary text-sm px-3 py-1"
+                  disabled={detectingVram}
+                >
+                  {detectingVram ? (
+                    <>
+                      <div className="loading-spinner inline-block mr-2 w-3 h-3"></div>
+                      Detecting...
+                    </>
+                  ) : (
+                    <>
+                      <FiRefreshCw className="inline mr-1" />
+                      Detect Now
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {vramInfo && (
+                <div className="space-y-2 text-sm">
+                  {vramInfo.detection_successful !== false ? (
+                    <>
+                      <div className="flex items-center gap-2 text-green-400">
+                        <FiCheckCircle />
+                        <span>Detection Successful</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-gray-300">
+                        <div>
+                          <span className="text-gray-400">Total VRAM:</span>
+                          <span className="ml-2 font-semibold">{vramInfo.vram_total_gb?.toFixed(1)}GB</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Free:</span>
+                          <span className="ml-2 font-semibold">{vramInfo.vram_free_gb?.toFixed(1)}GB</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Used:</span>
+                          <span className="ml-2 font-semibold">{vramInfo.vram_used_gb?.toFixed(1)}GB</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Method:</span>
+                          <span className="ml-2 font-mono text-xs">{vramInfo.detection_method}</span>
+                        </div>
+                      </div>
+                      {vramInfo.gpu_name && (
+                        <div className="pt-2 border-t border-white/10">
+                          <span className="text-gray-400">GPU:</span>
+                          <span className="ml-2 font-medium">{vramInfo.gpu_name}</span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-start gap-2 text-red-400">
+                      <FiAlertCircle className="flex-shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-medium">Detection Failed</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {vramInfo.error || 'Unable to detect GPU VRAM'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Generation Defaults */}

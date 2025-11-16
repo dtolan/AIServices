@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # CivitAI API (for model downloads)
     civitai_api_key: str = ""
 
+    # GPU VRAM Detection
+    # Options: "auto" (detect from SD API), "manual" (user-specified), "disabled" (don't use)
+    vram_detection_mode: str = "auto"
+    vram_manual_gb: float = 8.0  # Used when vram_detection_mode = "manual"
+
     # Application
     app_host: str = "0.0.0.0"
     app_port: int = 8000

@@ -17,6 +17,7 @@ class ModelManager:
         {
             "id": "4384",
             "name": "DreamShaper 8",
+            "filename_pattern": "dreamshaper_8",  # Pattern to match installed filename
             "type": "General Purpose",
             "description": "Excellent all-around model with great balance of quality and versatility",
             "size": "2.0 GB",
@@ -27,6 +28,7 @@ class ModelManager:
         {
             "id": "4201",
             "name": "Realistic Vision V5.1",
+            "filename_pattern": "realisticvision",  # Matches realisticVisionV60B1_v51HyperVAE
             "type": "Photorealistic",
             "description": "Best for photorealistic images with amazing detail",
             "size": "2.1 GB",
@@ -37,6 +39,7 @@ class ModelManager:
         {
             "id": "9942",
             "name": "AbyssOrangeMix3",
+            "filename_pattern": "abyssorangemix",  # Matches abyssorangemix3AOM3_aom3a1b
             "type": "Anime",
             "description": "High-quality anime and illustration style",
             "size": "2.0 GB",
@@ -47,6 +50,7 @@ class ModelManager:
         {
             "id": "43331",
             "name": "Deliberate V2",
+            "filename_pattern": "deliberate",
             "type": "Artistic",
             "description": "Great for artistic and creative generations",
             "size": "2.1 GB",
@@ -57,6 +61,7 @@ class ModelManager:
         {
             "id": "101055",
             "name": "SDXL 1.0",
+            "filename_pattern": "sdxl_v10",  # Matches sdXL_v10VAEFix
             "type": "SDXL Base",
             "description": "Official SDXL base model - requires more VRAM but produces 1024x1024 images",
             "size": "6.9 GB",
@@ -68,6 +73,7 @@ class ModelManager:
         {
             "id": "112902",
             "name": "DreamShaper XL",
+            "filename_pattern": "dreamshaperxl",  # Matches dreamshaperXL_lightningDPMSDE
             "type": "SDXL",
             "description": "SDXL version of DreamShaper with amazing quality",
             "size": "6.5 GB",
@@ -268,6 +274,128 @@ class ModelManager:
             print(f"Error getting download URL: {e}")
             return None
 
+    async def search_civitai_models(self, query: str, limit: int = 10) -> List[Dict]:
+        """
+        Search for models on CivitAI by name
+
+        Args:
+            query: Search query (model name)
+            limit: Max number of results
+
+        Returns:
+            List of matching models with their info
+        """
+        try:
+            headers = {}
+            if self.civitai_api_key:
+                headers["Authorization"] = f"Bearer {self.civitai_api_key}"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.api_base}/models",
+                    params={
+                        "query": query,
+                        "limit": limit,
+                        "types": "Checkpoint"  # Only get checkpoint models
+                    },
+                    headers=headers
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                # Format results
+                models = []
+                for item in data.get("items", []):
+                    models.append({
+                        "id": item.get("id"),
+                        "name": item.get("name"),
+                        "type": item.get("type"),
+                        "description": item.get("description", "")[:200],  # Truncate
+                        "nsfw": item.get("nsfw", False),
+                        "tags": item.get("tags", []),
+                        "creator": item.get("creator", {}).get("username", "Unknown")
+                    })
+
+                return models
+
+        except Exception as e:
+            print(f"Error searching CivitAI: {e}")
+            return []
+
+    async def validate_model_exists(self, model_name: str) -> Optional[Dict]:
+        """
+        Check if a model exists on CivitAI and return its info
+
+        Args:
+            model_name: Name of the model to search for
+
+        Returns:
+            Dict with model info if found, None otherwise
+            {
+                "exists": true,
+                "id": "12345",
+                "name": "Actual Model Name",
+                "download_url": "...",
+                "filename": "model.safetensors",
+                "size_gb": 2.0
+            }
+        """
+        try:
+            # Search for the model
+            results = await self.search_civitai_models(model_name, limit=5)
+
+            if not results:
+                return None
+
+            # Find best match (exact or closest)
+            best_match = None
+            model_name_lower = model_name.lower()
+
+            for model in results:
+                model_result_name = model["name"].lower()
+
+                # Exact match
+                if model_result_name == model_name_lower:
+                    best_match = model
+                    break
+
+                # Partial match
+                if model_name_lower in model_result_name or model_result_name in model_name_lower:
+                    if not best_match:
+                        best_match = model
+
+            if not best_match:
+                # No good match found
+                return None
+
+            # Get download info
+            download_info = await self.get_download_url_for_model(str(best_match["id"]))
+
+            if not download_info:
+                return {
+                    "exists": True,
+                    "id": best_match["id"],
+                    "name": best_match["name"],
+                    "download_url": None,
+                    "filename": None,
+                    "size_gb": None,
+                    "error": "Could not get download URL"
+                }
+
+            return {
+                "exists": True,
+                "id": best_match["id"],
+                "name": best_match["name"],
+                "download_url": download_info.get("download_url"),
+                "filename": download_info.get("filename"),
+                "size_gb": round(download_info.get("size", 0) / (1024**3), 2),
+                "version_name": download_info.get("version_name")
+            }
+
+        except Exception as e:
+            print(f"Error validating model: {e}")
+            return None
+
     def delete_model(self, filename: str) -> bool:
         """Delete an installed model"""
         try:
@@ -295,40 +423,67 @@ class ModelManager:
         except Exception:
             return False
 
-    def get_model_recommendation_prompt(self, user_prompt: str, installed_models: List[Dict]) -> str:
+    def get_model_recommendation_prompt(
+        self,
+        user_prompt: str,
+        installed_models: List[Dict],
+        allow_any_model: bool = True
+    ) -> str:
         """
         Generate a system prompt for LLM to recommend the best model
 
         Args:
             user_prompt: The user's image generation prompt
             installed_models: List of installed models with their names
+            allow_any_model: If True, allow recommendations beyond curated list
 
         Returns:
-            System prompt for model recommendation
+            System prompt for model recommendation with 3-tier response
         """
         installed_names = [m["name"] for m in installed_models] if installed_models else []
 
-        system_prompt = f"""You are an expert at Stable Diffusion models. Analyze the user's prompt and recommend the best SD model.
+        any_model_instruction = ""
+        if allow_any_model:
+            any_model_instruction = """
+You can recommend ANY Stable Diffusion model that exists on CivitAI.
+- If you know of a specialized model that would be PERFECT for this prompt, recommend it as the primary choice
+- The model must actually exist on CivitAI (you will be fact-checked)
+- Be confident in your recommendation - only suggest models you know exist
+"""
 
-Available curated models:
+        system_prompt = f"""You are an expert at Stable Diffusion models. Analyze the user's prompt and provide a 3-tier recommendation.
+{any_model_instruction}
+Available curated models (guaranteed quality):
 {self._format_models_for_llm()}
 
 Currently installed models:
-{installed_names if installed_names else "None - suggest one to download"}
+{installed_names if installed_names else "None"}
 
-Based on the user's prompt, recommend:
-1. The BEST model for their specific use case (from curated list)
-2. Whether they should use an installed model or download a new one
-3. Brief explanation (1-2 sentences) why this model is ideal
+Based on the user's prompt: "{user_prompt}"
 
-User's prompt: "{user_prompt}"
+Provide THREE recommendations:
+1. **Primary Recommendation**: The absolute BEST model for this specific prompt
+   - Can be ANY model from CivitAI if you know a perfect match exists
+   - Otherwise, choose from curated list
+2. **Curated Alternative**: Best model from the curated list above
+3. **Installed Option**: Best option from user's installed models (if any)
 
 Respond in JSON format:
 {{
-  "recommended_model": "model name",
-  "is_installed": true/false,
-  "reason": "explanation",
-  "alternative": "backup suggestion if primary not installed"
+  "primary_recommendation": {{
+    "model_name": "exact model name",
+    "source": "civitai" | "curated" | "installed",
+    "reason": "1-2 sentences why this is ideal",
+    "confidence": "high" | "medium" | "low"
+  }},
+  "curated_alternative": {{
+    "model_name": "model from curated list",
+    "reason": "why this is the best curated choice"
+  }},
+  "installed_option": {{
+    "model_name": "installed model name or null",
+    "reason": "why this installed model works or null"
+  }}
 }}"""
 
         return system_prompt
